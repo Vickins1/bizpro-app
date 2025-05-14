@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Alert, FlatList, Animated } from 'react-native';
+import { View, StyleSheet, Alert, FlatList, Animated, ScrollView } from 'react-native';
 import { Button, Text, TextInput, Menu, Card, FAB, useTheme } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import db from '../database/db';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type InventoryItem = {
   id: number;
@@ -29,8 +30,24 @@ const SalesScreen: React.FC = () => {
   const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
+  const [currency, setCurrency] = useState('KES');
   const formAnim = useRef(new Animated.Value(0)).current;
   const cardAnims = useRef<Animated.Value[]>([]).current;
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const savedSettings = await AsyncStorage.getItem('settings');
+        if (savedSettings) {
+          const parsedSettings = JSON.parse(savedSettings);
+          setCurrency(parsedSettings.currency || 'KES');
+        }
+      } catch (err) {
+        console.warn('Failed to load settings:', err);
+      }
+    };
+    loadSettings();
+  }, []);
 
   useEffect(() => {
     fetchItems();
@@ -121,7 +138,7 @@ const SalesScreen: React.FC = () => {
         item.id
       );
 
-      Alert.alert('Success', `Sale saved! KES ${amount.toFixed(2)} earned.`);
+      Alert.alert('Success', `Sale saved! ${currency} ${amount.toFixed(2)} earned.`);
       setSelectedItemId(null);
       setQuantity('');
       setError('');
@@ -162,7 +179,7 @@ const SalesScreen: React.FC = () => {
             {item.itemName}
           </Text>
           <Text style={styles.cardText}>Quantity: {item.quantity}</Text>
-          <Text style={styles.cardText}>Amount: KES {item.amount.toFixed(2)}</Text>
+          <Text style={styles.cardText}>Amount: {currency} {item.amount.toFixed(2)}</Text>
           <Text style={styles.cardText}>
             Date: {new Date(item.date).toLocaleDateString()}
           </Text>
@@ -177,103 +194,108 @@ const SalesScreen: React.FC = () => {
         colors={['#1E1E1E', '#3A3A3A']}
         style={styles.gradient}
       >
-        <Text variant="displaySmall" style={styles.title}>
-          Record Sale
-        </Text>
-        <Animated.View
-          style={[
-            styles.formContainer,
-            {
-              opacity: formAnim,
-              transform: [
-                {
-                  translateY: formAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
         >
-          <Menu
-            visible={menuVisible}
-            onDismiss={() => setMenuVisible(false)}
-            anchor={
+          <Text variant="displaySmall" style={styles.title}>
+            Record Sale
+          </Text>
+          <Animated.View
+            style={[
+              styles.formContainer,
+              {
+                opacity: formAnim,
+                transform: [
+                  {
+                    translateY: formAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [50, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Menu
+              visible={menuVisible}
+              onDismiss={() => setMenuVisible(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  onPress={() => setMenuVisible(true)}
+                  style={styles.menuButton}
+                  textColor="#333"
+                  icon="menu-down"
+                >
+                  {selectedItemId
+                    ? items.find((item) => item.id === selectedItemId)?.name || 'Select Item'
+                    : 'Select Item'}
+                </Button>
+              }
+              contentStyle={styles.menuContent}
+            >
+              {items.length > 0 ? (
+                items.map((item) => (
+                  <Menu.Item
+                    key={item.id}
+                    onPress={() => {
+                      setSelectedItemId(item.id);
+                      setMenuVisible(false);
+                      setError('');
+                    }}
+                    title={`${item.name} - ${currency} ${item.price.toFixed(2)} (Qty: ${item.quantity})`}
+                    style={styles.menuItem}
+                    titleStyle={styles.menuItemText}
+                  />
+                ))
+              ) : (
+                <Menu.Item title="No items available" disabled />
+              )}
+            </Menu>
+            <TextInput
+              label="Quantity"
+              value={quantity}
+              onChangeText={validateQuantity}
+              keyboardType="numeric"
+              mode="outlined"
+              style={styles.input}
+              theme={{ roundness: 10 }}
+              error={!!error}
+            />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <View style={styles.buttonContainer}>
               <Button
                 mode="outlined"
-                onPress={() => setMenuVisible(true)}
-                style={styles.menuButton}
-                textColor="#333"
-                icon="menu-down"
+                onPress={clearForm}
+                style={styles.formButton}
+                textColor="#FF6F61"
               >
-                {selectedItemId
-                  ? items.find((item) => item.id === selectedItemId)?.name || 'Select Item'
-                  : 'Select Item'}
+                Clear
               </Button>
-            }
-            contentStyle={styles.menuContent}
-          >
-            {items.length > 0 ? (
-              items.map((item) => (
-                <Menu.Item
-                  key={item.id}
-                  onPress={() => {
-                    setSelectedItemId(item.id);
-                    setMenuVisible(false);
-                    setError('');
-                  }}
-                  title={`${item.name} - KES ${item.price.toFixed(2)} (Qty: ${item.quantity})`}
-                  style={styles.menuItem}
-                  titleStyle={styles.menuItemText}
-                />
-              ))
-            ) : (
-              <Menu.Item title="No items available" disabled />
-            )}
-          </Menu>
-          <TextInput
-            label="Quantity"
-            value={quantity}
-            onChangeText={validateQuantity}
-            keyboardType="numeric"
-            mode="outlined"
-            style={styles.input}
-            theme={{ roundness: 10 }}
-            error={!!error}
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <View style={styles.buttonContainer}>
-            <Button
-              mode="outlined"
-              onPress={clearForm}
-              style={styles.formButton}
-              textColor="#FF6F61"
-            >
-              Clear
-            </Button>
-            <FAB
-              style={styles.fab}
-              icon="check"
-              onPress={handleSubmit}
-              color="#fff"
-              disabled={!selectedItemId || !quantity || !!error}
-            />
-          </View>
-        </Animated.View>
-        {recentSales.length > 0 && (
-          <View style={styles.recentSalesContainer}>
-            <Text variant="titleLarge" style={styles.recentSalesTitle}>
-              Recent Sales
-            </Text>
-            <FlatList
-              data={recentSales}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={renderSale}
-              contentContainerStyle={styles.recentSalesList}
-            />
-          </View>
-        )}
+              <FAB
+                style={styles.fab}
+                icon="check"
+                onPress={handleSubmit}
+                color="#fff"
+                disabled={!selectedItemId || !quantity || !!error}
+              />
+            </View>
+          </Animated.View>
+          {recentSales.length > 0 && (
+            <View style={styles.recentSalesContainer}>
+              <Text variant="titleLarge" style={styles.recentSalesTitle}>
+                Recent Sales
+              </Text>
+              <FlatList
+                data={recentSales}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={renderSale}
+                contentContainerStyle={styles.recentSalesList}
+              />
+            </View>
+          )}
+        </ScrollView>
       </LinearGradient>
     </View>
   );
@@ -285,8 +307,11 @@ const styles = StyleSheet.create({
   },
   gradient: {
     flex: 1,
-    paddingTop: 40,
     paddingHorizontal: 20,
+  },
+  scrollContainer: {
+    paddingTop: 40,
+    paddingBottom: 100, // Increased to account for navbar
   },
   title: {
     color: '#fff',

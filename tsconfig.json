@@ -1,6 +1,35 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
-  }
+    // Enable strict type checking for better code quality
+    "strict": true,
+    // Configure JSX for React Native
+    "jsx": "react-native",
+    // Include ES6 and DOM libraries for JavaScript APIs
+    "lib": ["es6", "dom"],
+    // Use bundler module resolution for Expo/Metro compatibility
+    "moduleResolution": "bundler",
+    // Allow interoperability between CommonJS and ES modules
+    "esModuleInterop": true,
+    // Skip type checking of declaration files to avoid third-party issues
+    "skipLibCheck": true,
+    // Allow default imports from modules without explicit exports
+    "allowSyntheticDefaultImports": true,
+    // Set base directory for resolving non-relative module names
+    "baseUrl": ".",
+    // Specify types to include for TypeScript
+    "types": [
+      "react",
+      "react-native",
+      "@react-navigation/native",
+      "@react-navigation/bottom-tabs",
+      "@expo/vector-icons"
+    ],
+    // Target modern JavaScript version
+    "target": "esnext",
+    // Use ESNext module syntax
+    "module": "esnext"
+  },
+  // Exclude node_modules to optimize compilation
+  "exclude": ["node_modules"]
 }

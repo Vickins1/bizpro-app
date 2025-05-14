@@ -22,7 +22,6 @@ type SalesSummary = {
 };
 
 const { width, height } = Dimensions.get('window');
-const BUTTON_SIZE = (width - 80) / 3;
 const IMAGES = [
   require('../../assets/bg1.jpg'),
   require('../../assets/bg2.jpg'),
@@ -37,7 +36,6 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const contentAnim = useRef(new Animated.Value(0)).current;
   const [salesSummary, setSalesSummary] = useState<SalesSummary>({ totalSales: 0, totalRevenue: 0 });
   const [lowStockItems, setLowStockItems] = useState<InventoryItem[]>([]);
-  const [activeTab, setActiveTab] = useState('Home');
 
   // Background slideshow and data fetching
   useEffect(() => {
@@ -101,34 +99,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
     return () => clearInterval(interval);
   }, [currentImage, slideAnim, titleAnim, contentAnim]);
 
-  const [scaleAnim] = useState({
-    inventory: new Animated.Value(1),
-    sales: new Animated.Value(1),
-    reports: new Animated.Value(1),
-    homeNav: new Animated.Value(1),
-    inventoryNav: new Animated.Value(1),
-    salesNav: new Animated.Value(1),
-    reportsNav: new Animated.Value(1),
-  });
-
-  const handlePressIn = (key: keyof typeof scaleAnim) => {
-    Animated.spring(scaleAnim[key], {
-      toValue: 0.95,
-      speed: 20,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = (key: keyof typeof scaleAnim) => {
-    Animated.spring(scaleAnim[key], {
-      toValue: 1,
-      speed: 20,
-      useNativeDriver: true,
-    }).start();
-  };
-
   const navigateTo = (screen: keyof RootStackParamList) => {
-    setActiveTab(screen);
     navigation.navigate(screen);
   };
 
@@ -240,146 +211,11 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                 </Card.Content>
               </Card>
             )}
-            <View style={styles.buttonContainer}>
-              <TouchableRipple
-                onPressIn={() => handlePressIn('inventory')}
-                onPressOut={() => handlePressOut('inventory')}
-                onPress={() => navigateTo('Inventory')}
-                rippleColor="rgba(255, 255, 255, 0.2)"
-                style={styles.ripple}
-              >
-                <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim.inventory }] }]}>
-                  <LinearGradient
-                    colors={['#FF6F61', '#FF8A65']}
-                    style={styles.cardInner}
-                  >
-                    <Card.Content style={styles.cardContent}>
-                      <MaterialCommunityIcons name="warehouse" size={28} color="#fff" />
-                      <Text variant="titleMedium" style={styles.cardTitle}>
-                        Inventory
-                      </Text>
-                    </Card.Content>
-                  </LinearGradient>
-                </Animated.View>
-              </TouchableRipple>
-              <TouchableRipple
-                onPressIn={() => handlePressIn('sales')}
-                onPressOut={() => handlePressOut('sales')}
-                onPress={() => navigateTo('Sales')}
-                rippleColor="rgba(255, 255, 255, 0.2)"
-                style={styles.ripple}
-              >
-                <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim.sales }] }]}>
-                  <LinearGradient
-                    colors={['#4CAF50', '#66BB6A']}
-                    style={styles.cardInner}
-                  >
-                    <Card.Content style={styles.cardContent}>
-                      <MaterialCommunityIcons name="cash-register" size={28} color="#fff" />
-                      <Text variant="titleMedium" style={styles.cardTitle}>
-                        Sales
-                      </Text>
-                    </Card.Content>
-                  </LinearGradient>
-                </Animated.View>
-              </TouchableRipple>
-              <TouchableRipple
-                onPressIn={() => handlePressIn('reports')}
-                onPressOut={() => handlePressOut('reports')}
-                onPress={() => navigateTo('Reports')}
-                rippleColor="rgba(255, 255, 255, 0.2)"
-                style={styles.ripple}
-              >
-                <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim.reports }] }]}>
-                  <LinearGradient
-                    colors={['#2196F3', '#42A5F5']}
-                    style={styles.cardInner}
-                  >
-                    <Card.Content style={styles.cardContent}>
-                      <MaterialCommunityIcons name="chart-bar" size={28} color="#fff" />
-                      <Text variant="titleMedium" style={styles.cardTitle}>
-                        Reports
-                      </Text>
-                    </Card.Content>
-                  </LinearGradient>
-                </Animated.View>
-              </TouchableRipple>
-            </View>
             <View style={styles.footer}>
               <Text style={styles.footerText}>Powered by Vickins Technologies</Text>
             </View>
           </Animated.View>
         </ScrollView>
-        <View style={styles.navbar}>
-          <TouchableRipple
-            onPressIn={() => handlePressIn('homeNav')}
-            onPressOut={() => handlePressOut('homeNav')}
-            onPress={() => navigateTo('Home')}
-            rippleColor="rgba(255, 255, 255, 0.2)"
-            style={styles.navItem}
-          >
-            <Animated.View style={{ transform: [{ scale: scaleAnim.homeNav }] }}>
-              <MaterialCommunityIcons
-                name="home"
-                size={24}
-                color={activeTab === 'Home' ? '#FF6F61' : '#E0E0E0'}
-              />
-              <Text style={[styles.navText, activeTab === 'Home' && styles.navTextActive]}>Home</Text>
-            </Animated.View>
-          </TouchableRipple>
-          <TouchableRipple
-            onPressIn={() => handlePressIn('inventoryNav')}
-            onPressOut={() => handlePressOut('inventoryNav')}
-            onPress={() => navigateTo('Inventory')}
-            rippleColor="rgba(255, 255, 255, 0.2)"
-            style={styles.navItem}
-          >
-            <Animated.View style={{ transform: [{ scale: scaleAnim.inventoryNav }] }}>
-              <MaterialCommunityIcons
-                name="warehouse"
-                size={24}
-                color={activeTab === 'Inventory' ? '#FF6F61' : '#E0E0E0'}
-              />
-              <Text style={[styles.navText, activeTab === 'Inventory' && styles.navTextActive]}>
-                Inventory
-              </Text>
-            </Animated.View>
-          </TouchableRipple>
-          <TouchableRipple
-            onPressIn={() => handlePressIn('salesNav')}
-            onPressOut={() => handlePressOut('salesNav')}
-            onPress={() => navigateTo('Sales')}
-            rippleColor="rgba(255, 255, 255, 0.2)"
-            style={styles.navItem}
-          >
-            <Animated.View style={{ transform: [{ scale: scaleAnim.salesNav }] }}>
-              <MaterialCommunityIcons
-                name="cash-register"
-                size={24}
-                color={activeTab === 'Sales' ? '#FF6F61' : '#E0E0E0'}
-              />
-              <Text style={[styles.navText, activeTab === 'Sales' && styles.navTextActive]}>Sales</Text>
-            </Animated.View>
-          </TouchableRipple>
-          <TouchableRipple
-            onPressIn={() => handlePressIn('reportsNav')}
-            onPressOut={() => handlePressOut('reportsNav')}
-            onPress={() => navigateTo('Reports')}
-            rippleColor="rgba(255, 255, 255, 0.2)"
-            style={styles.navItem}
-          >
-            <Animated.View style={{ transform: [{ scale: scaleAnim.reportsNav }] }}>
-              <MaterialCommunityIcons
-                name="chart-bar"
-                size= {24}
-                color={activeTab === 'Reports' ? '#FF6F61' : '#E0E0E0'}
-              />
-              <Text style={[styles.navText, activeTab === 'Reports' && styles.navTextActive]}>
-                Reports
-              </Text>
-            </Animated.View>
-          </TouchableRipple>
-        </View>
       </LinearGradient>
     </View>
   );
@@ -408,7 +244,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: 20,
-    paddingBottom: 100, // Increased to accommodate navbar
+    paddingBottom: 100, // Increased for taller BottomTabNavigator
     minHeight: height,
   },
   header: {
@@ -499,36 +335,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 20,
-  },
-  ripple: {
-    width: BUTTON_SIZE,
-    height: BUTTON_SIZE,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  card: {
-    flex: 1,
-    borderRadius: 16,
-  },
-  cardInner: {
-    flex: 1,
-    borderRadius: 16,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-  },
-  cardContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    padding: 12,
-  },
   footer: {
     marginTop: 20,
     paddingVertical: 15,
@@ -545,40 +351,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     letterSpacing: 0.5,
-  },
-  navbar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 70,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
-  },
-  navItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-  },
-  navText: {
-    color: '#E0E0E0',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  navTextActive: {
-    color: '#FF6F61',
-    fontWeight: '700',
   },
 });
 

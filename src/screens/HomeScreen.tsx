@@ -4,6 +4,7 @@ import { Card, Text, TouchableRipple, useTheme, Chip } from 'react-native-paper'
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import db from '../database/db';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -20,8 +21,8 @@ type SalesSummary = {
   totalRevenue: number;
 };
 
-const { width } = Dimensions.get('window');
-const BUTTON_SIZE = (width - 80) / 3; // Smaller buttons for 3 in a row
+const { width, height } = Dimensions.get('window');
+const BUTTON_SIZE = (width - 80) / 3;
 const IMAGES = [
   require('../../assets/bg1.jpg'),
   require('../../assets/bg2.jpg'),
@@ -36,13 +37,12 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const contentAnim = useRef(new Animated.Value(0)).current;
   const [salesSummary, setSalesSummary] = useState<SalesSummary>({ totalSales: 0, totalRevenue: 0 });
   const [lowStockItems, setLowStockItems] = useState<InventoryItem[]>([]);
+  const [activeTab, setActiveTab] = useState('Home');
 
   // Background slideshow and data fetching
   useEffect(() => {
-    // Fetch sales summary and low stock items
     const fetchData = async () => {
       try {
-        // Today's sales summary
         const summaryResult = await db.getFirstAsync<SalesSummary>(
           `SELECT 
              COUNT(*) as totalSales,
@@ -55,7 +55,6 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           totalRevenue: summaryResult?.totalRevenue || 0,
         });
 
-        // Low stock items (quantity <= 5)
         const lowStockResult = await db.getAllAsync<InventoryItem>(
           `SELECT * FROM inventory WHERE quantity <= 5 ORDER BY quantity ASC`
         );
@@ -72,26 +71,29 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       const nextImage = (currentImage + 1) % IMAGES.length;
       Animated.timing(slideAnim, {
         toValue: -width * nextImage,
-        duration: 1000,
+        duration: 1200,
         useNativeDriver: true,
       }).start(() => {
         setCurrentImage(nextImage);
         if (nextImage === 0) {
-          slideAnim.setValue(0); // Reset to start for seamless loop
+          slideAnim.setValue(0);
         }
       });
-    }, 5000); // Change image every 5 seconds
+    }, 6000);
 
-    // Animate title and content entrance
+    // Entrance animations
     Animated.parallel([
-      Animated.timing(titleAnim, {
+      Animated.spring(titleAnim, {
         toValue: 1,
-        duration: 1000,
+        friction: 8,
+        tension: 40,
         useNativeDriver: true,
       }),
-      Animated.timing(contentAnim, {
+      Animated.spring(contentAnim, {
         toValue: 1,
-        duration: 1200,
+        friction: 8,
+        tension: 40,
+        delay: 200,
         useNativeDriver: true,
       }),
     ]).start();
@@ -103,11 +105,16 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
     inventory: new Animated.Value(1),
     sales: new Animated.Value(1),
     reports: new Animated.Value(1),
+    homeNav: new Animated.Value(1),
+    inventoryNav: new Animated.Value(1),
+    salesNav: new Animated.Value(1),
+    reportsNav: new Animated.Value(1),
   });
 
   const handlePressIn = (key: keyof typeof scaleAnim) => {
     Animated.spring(scaleAnim[key], {
-      toValue: 0.9,
+      toValue: 0.95,
+      speed: 20,
       useNativeDriver: true,
     }).start();
   };
@@ -115,76 +122,116 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const handlePressOut = (key: keyof typeof scaleAnim) => {
     Animated.spring(scaleAnim[key], {
       toValue: 1,
+      speed: 20,
       useNativeDriver: true,
     }).start();
   };
 
   const navigateTo = (screen: keyof RootStackParamList) => {
+    setActiveTab(screen);
     navigation.navigate(screen);
   };
 
   return (
     <View style={styles.background}>
-      <Animated.View
-        style={[
-          styles.imageContainer,
-          {
-            transform: [{ translateX: slideAnim }],
-            flexDirection: 'row',
-          },
-        ]}
-      >
+      <Animated.View style={[styles.imageContainer, { transform: [{ translateX: slideAnim }] }]}>
         {IMAGES.map((image, index) => (
           <ImageBackground
             key={index}
             source={image}
             style={[styles.image, { width }]}
             resizeMode="cover"
-          />
+          >
+            <LinearGradient
+              colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)']}
+              style={styles.gradient}
+            />
+          </ImageBackground>
         ))}
       </Animated.View>
-      <View style={styles.overlay}>
+      <LinearGradient
+        colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.8)']}
+        style={styles.overlay}
+      >
         <ScrollView contentContainerStyle={styles.scrollContainer}>
           <Animated.View
             style={[
               styles.header,
               {
-                transform: [{ translateY: titleAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }],
+                transform: [
+                  {
+                    translateY: titleAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [100, 0],
+                    }),
+                  },
+                ],
                 opacity: titleAnim,
               },
             ]}
           >
-            <Text variant="titleLarge" style={styles.title}>
+            <Text variant="displaySmall" style={styles.title}>
               BizPro
             </Text>
-            <Text variant="titleSmall" style={styles.subtitle}>
-              Power Your Business
+            <Text variant="titleMedium" style={styles.subtitle}>
+              Empower Your Business
             </Text>
           </Animated.View>
-          <Animated.View style={[styles.content, { opacity: contentAnim }]}>
+          <Animated.View
+            style={[
+              styles.content,
+              {
+                transform: [
+                  {
+                    translateY: contentAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [50, 0],
+                    }),
+                  },
+                ],
+                opacity: contentAnim,
+              },
+            ]}
+          >
             <Card style={styles.summaryCard}>
               <Card.Content>
-                <Text variant="titleMedium" style={styles.cardTitle}>
-                  Today's Summary
-                </Text>
-                <Text style={styles.summaryText}>Sales: {salesSummary.totalSales}</Text>
-                <Text style={styles.summaryText}>
-                  Revenue: KES {salesSummary.totalRevenue.toFixed(2)}
-                </Text>
+                <View style={styles.summaryHeader}>
+                  <MaterialCommunityIcons name="chart-line" size={24} color={theme.colors.primary} />
+                  <Text variant="titleLarge" style={styles.cardTitle}>
+                    Today's Insights
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Total Sales</Text>
+                  <Text style={styles.summaryValue}>{salesSummary.totalSales}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Revenue</Text>
+                  <Text style={styles.summaryValue}>
+                    KES {salesSummary.totalRevenue.toFixed(2)}
+                  </Text>
+                </View>
               </Card.Content>
             </Card>
             {lowStockItems.length > 0 && (
               <Card style={styles.lowStockCard}>
                 <Card.Content>
-                  <Text variant="titleMedium" style={styles.cardTitle}>
-                    Low Stock Alerts
-                  </Text>
+                  <View style={styles.summaryHeader}>
+                    <MaterialCommunityIcons name="alert-circle" size={24} color="#FF6F61" />
+                    <Text variant="titleLarge" style={styles.cardTitle}>
+                      Low Stock Alerts
+                    </Text>
+                  </View>
                   <View style={styles.chipContainer}>
                     {lowStockItems.map((item) => (
                       <Chip
                         key={item.id}
                         style={styles.chip}
+                        textStyle={styles.chipText}
                         onPress={() => navigateTo('Inventory')}
+                        icon={() => (
+                          <MaterialCommunityIcons name="package-variant" size={16} color="#fff" />
+                        )}
                       >
                         {item.name}: {item.quantity}
                       </Chip>
@@ -198,60 +245,142 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                 onPressIn={() => handlePressIn('inventory')}
                 onPressOut={() => handlePressOut('inventory')}
                 onPress={() => navigateTo('Inventory')}
-                rippleColor="rgba(255, 255, 255, 0.3)"
+                rippleColor="rgba(255, 255, 255, 0.2)"
                 style={styles.ripple}
               >
                 <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim.inventory }] }]}>
-                  <Card style={[styles.cardInner, { backgroundColor: '#FF6F61' }]}>
+                  <LinearGradient
+                    colors={['#FF6F61', '#FF8A65']}
+                    style={styles.cardInner}
+                  >
                     <Card.Content style={styles.cardContent}>
-                      <MaterialCommunityIcons name="warehouse" size={24} color="#fff" />
-                      <Text variant="labelLarge" style={styles.cardTitle}>
+                      <MaterialCommunityIcons name="warehouse" size={28} color="#fff" />
+                      <Text variant="titleMedium" style={styles.cardTitle}>
                         Inventory
                       </Text>
                     </Card.Content>
-                  </Card>
+                  </LinearGradient>
                 </Animated.View>
               </TouchableRipple>
               <TouchableRipple
                 onPressIn={() => handlePressIn('sales')}
                 onPressOut={() => handlePressOut('sales')}
                 onPress={() => navigateTo('Sales')}
-                rippleColor="rgba(255, 255, 255, 0.3)"
+                rippleColor="rgba(255, 255, 255, 0.2)"
                 style={styles.ripple}
               >
                 <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim.sales }] }]}>
-                  <Card style={[styles.cardInner, { backgroundColor: '#4CAF50' }]}>
+                  <LinearGradient
+                    colors={['#4CAF50', '#66BB6A']}
+                    style={styles.cardInner}
+                  >
                     <Card.Content style={styles.cardContent}>
-                      <MaterialCommunityIcons name="cash-register" size={24} color="#fff" />
-                      <Text variant="labelLarge" style={styles.cardTitle}>
+                      <MaterialCommunityIcons name="cash-register" size={28} color="#fff" />
+                      <Text variant="titleMedium" style={styles.cardTitle}>
                         Sales
                       </Text>
                     </Card.Content>
-                  </Card>
+                  </LinearGradient>
                 </Animated.View>
               </TouchableRipple>
               <TouchableRipple
                 onPressIn={() => handlePressIn('reports')}
                 onPressOut={() => handlePressOut('reports')}
                 onPress={() => navigateTo('Reports')}
-                rippleColor="rgba(255, 255, 255, 0.3)"
+                rippleColor="rgba(255, 255, 255, 0.2)"
                 style={styles.ripple}
               >
                 <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim.reports }] }]}>
-                  <Card style={[styles.cardInner, { backgroundColor: '#2196F3' }]}>
+                  <LinearGradient
+                    colors={['#2196F3', '#42A5F5']}
+                    style={styles.cardInner}
+                  >
                     <Card.Content style={styles.cardContent}>
-                      <MaterialCommunityIcons name="chart-bar" size={24} color="#fff" />
-                      <Text variant="labelLarge" style={styles.cardTitle}>
+                      <MaterialCommunityIcons name="chart-bar" size={28} color="#fff" />
+                      <Text variant="titleMedium" style={styles.cardTitle}>
                         Reports
                       </Text>
                     </Card.Content>
-                  </Card>
+                  </LinearGradient>
                 </Animated.View>
               </TouchableRipple>
             </View>
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Powered by Vickins Technologies</Text>
+            </View>
           </Animated.View>
         </ScrollView>
-      </View>
+        <View style={styles.navbar}>
+          <TouchableRipple
+            onPressIn={() => handlePressIn('homeNav')}
+            onPressOut={() => handlePressOut('homeNav')}
+            onPress={() => navigateTo('Home')}
+            rippleColor="rgba(255, 255, 255, 0.2)"
+            style={styles.navItem}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnim.homeNav }] }}>
+              <MaterialCommunityIcons
+                name="home"
+                size={24}
+                color={activeTab === 'Home' ? '#FF6F61' : '#E0E0E0'}
+              />
+              <Text style={[styles.navText, activeTab === 'Home' && styles.navTextActive]}>Home</Text>
+            </Animated.View>
+          </TouchableRipple>
+          <TouchableRipple
+            onPressIn={() => handlePressIn('inventoryNav')}
+            onPressOut={() => handlePressOut('inventoryNav')}
+            onPress={() => navigateTo('Inventory')}
+            rippleColor="rgba(255, 255, 255, 0.2)"
+            style={styles.navItem}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnim.inventoryNav }] }}>
+              <MaterialCommunityIcons
+                name="warehouse"
+                size={24}
+                color={activeTab === 'Inventory' ? '#FF6F61' : '#E0E0E0'}
+              />
+              <Text style={[styles.navText, activeTab === 'Inventory' && styles.navTextActive]}>
+                Inventory
+              </Text>
+            </Animated.View>
+          </TouchableRipple>
+          <TouchableRipple
+            onPressIn={() => handlePressIn('salesNav')}
+            onPressOut={() => handlePressOut('salesNav')}
+            onPress={() => navigateTo('Sales')}
+            rippleColor="rgba(255, 255, 255, 0.2)"
+            style={styles.navItem}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnim.salesNav }] }}>
+              <MaterialCommunityIcons
+                name="cash-register"
+                size={24}
+                color={activeTab === 'Sales' ? '#FF6F61' : '#E0E0E0'}
+              />
+              <Text style={[styles.navText, activeTab === 'Sales' && styles.navTextActive]}>Sales</Text>
+            </Animated.View>
+          </TouchableRipple>
+          <TouchableRipple
+            onPressIn={() => handlePressIn('reportsNav')}
+            onPressOut={() => handlePressOut('reportsNav')}
+            onPress={() => navigateTo('Reports')}
+            rippleColor="rgba(255, 255, 255, 0.2)"
+            style={styles.navItem}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnim.reportsNav }] }}>
+              <MaterialCommunityIcons
+                name="chart-bar"
+                size= {24}
+                color={activeTab === 'Reports' ? '#FF6F61' : '#E0E0E0'}
+              />
+              <Text style={[styles.navText, activeTab === 'Reports' && styles.navTextActive]}>
+                Reports
+              </Text>
+            </Animated.View>
+          </TouchableRipple>
+        </View>
+      </LinearGradient>
     </View>
   );
 };
@@ -259,7 +388,6 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    position: 'relative',
   },
   imageContainer: {
     position: 'absolute',
@@ -267,94 +395,190 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    flexDirection: 'row',
   },
   image: {
     height: '100%',
   },
+  gradient: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Darker overlay for contrast
   },
   scrollContainer: {
-    padding: 15,
-    paddingBottom: 30,
+    padding: 20,
+    paddingBottom: 100, // Increased to accommodate navbar
+    minHeight: height,
   },
   header: {
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 20,
+    marginTop: 40,
+    marginBottom: 30,
   },
   title: {
     color: '#fff',
-    fontWeight: '800',
-    textShadowColor: 'rgba(0, 0, 0, 0.7)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 8,
   },
   subtitle: {
-    color: '#fff',
-    marginTop: 8,
+    color: '#E0E0E0',
+    marginTop: 10,
+    fontWeight: '500',
     fontStyle: 'italic',
+    letterSpacing: 0.5,
   },
   content: {
     flex: 1,
   },
   summaryCard: {
-    marginBottom: 15,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 10,
+    marginBottom: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderRadius: 16,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    padding: 10,
   },
   lowStockCard: {
+    marginBottom: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderRadius: 16,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    padding: 10,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 15,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 10,
   },
   cardTitle: {
-    marginBottom: 10,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#333',
+    marginLeft: 10,
   },
-  summaryText: {
-    fontSize: 14,
-    marginVertical: 2,
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 8,
+  },
+  summaryLabel: {
+    fontSize: 16,
+    color: '#555',
+    fontWeight: '500',
+  },
+  summaryValue: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '600',
   },
   chipContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginTop: 5,
   },
   chip: {
-    marginRight: 8,
-    marginBottom: 8,
+    marginRight: 10,
+    marginBottom: 10,
     backgroundColor: '#FF6F61',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+  },
+  chipText: {
     color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
   },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    marginVertical: 15,
+    marginVertical: 20,
   },
   ripple: {
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
-    marginHorizontal: 5,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   card: {
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 16,
   },
   cardInner: {
     flex: 1,
-    borderRadius: 10,
-    elevation: 3,
+    borderRadius: 16,
+    elevation: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
   },
   cardContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
+    flex: 1,
+    padding: 12,
+  },
+  footer: {
+    marginTop: 20,
+    paddingVertical: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  footerText: {
+    color: '#E0E0E0',
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: 0.5,
+  },
+  navbar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 70,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  navItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  navText: {
+    color: '#E0E0E0',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  navTextActive: {
+    color: '#FF6F61',
+    fontWeight: '700',
   },
 });
 

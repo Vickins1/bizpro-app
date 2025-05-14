@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
-import { Button, Text, TextInput, Menu } from 'react-native-paper';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, StyleSheet, Alert, FlatList, Animated } from 'react-native';
+import { Button, Text, TextInput, Menu, Card, FAB, useTheme } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import db from '../database/db';
 
 type InventoryItem = {
@@ -10,15 +12,34 @@ type InventoryItem = {
   price: number;
 };
 
+type Sale = {
+  id: number;
+  itemId: number;
+  itemName: string;
+  quantity: number;
+  amount: number;
+  date: string;
+};
+
 const SalesScreen: React.FC = () => {
+  const theme = useTheme();
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
+  const formAnim = useRef(new Animated.Value(0)).current;
+  const cardAnims = useRef<Animated.Value[]>([]).current;
 
   useEffect(() => {
     fetchItems();
+    fetchRecentSales();
+    Animated.timing(formAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   const fetchItems = async () => {
@@ -30,7 +51,43 @@ const SalesScreen: React.FC = () => {
     }
   };
 
+  const fetchRecentSales = async () => {
+    try {
+      const result = await db.getAllAsync<Sale>(
+        `SELECT s.id, s.itemId, i.name as itemName, s.quantity, s.amount, s.date 
+         FROM sales s 
+         JOIN inventory i ON s.itemId = i.id 
+         ORDER BY s.date DESC 
+         LIMIT 5`
+      );
+      setRecentSales(result);
+      cardAnims.length = 0;
+      cardAnims.push(...result.map(() => new Animated.Value(0)));
+      result.forEach((_, index) => {
+        Animated.timing(cardAnims[index], {
+          toValue: 1,
+          duration: 300,
+          delay: index * 100,
+          useNativeDriver: true,
+        }).start();
+      });
+    } catch (err) {
+      Alert.alert('Error', 'Failed to load recent sales');
+    }
+  };
+
   const getSelectedItem = () => items.find((item) => item.id === selectedItemId);
+
+  const validateQuantity = (text: string) => {
+    const qty = parseInt(text);
+    const item = getSelectedItem();
+    if (item && (!isNaN(qty) && qty > item.quantity)) {
+      setError(`Quantity exceeds available stock (${item.quantity})`);
+    } else {
+      setError('');
+    }
+    setQuantity(text);
+  };
 
   const handleSubmit = async () => {
     const item = getSelectedItem();
@@ -69,61 +126,155 @@ const SalesScreen: React.FC = () => {
       setQuantity('');
       setError('');
       fetchItems();
+      fetchRecentSales();
     } catch (err) {
       Alert.alert('Error', 'Failed to save sale');
     }
   };
 
+  const clearForm = () => {
+    setSelectedItemId(null);
+    setQuantity('');
+    setError('');
+    setMenuVisible(false);
+  };
+
+  const renderSale = ({ item, index }: { item: Sale; index: number }) => (
+    <Animated.View
+      style={[
+        styles.saleCard,
+        {
+          opacity: cardAnims[index] || 0,
+          transform: [
+            {
+              translateY: cardAnims[index]?.interpolate({
+                inputRange: [0, 1],
+                outputRange: [50, 0],
+              }) || 0,
+            },
+          ],
+        },
+      ]}
+    >
+      <Card>
+        <Card.Content>
+          <Text variant="titleMedium" style={styles.cardTitle}>
+            {item.itemName}
+          </Text>
+          <Text style={styles.cardText}>Quantity: {item.quantity}</Text>
+          <Text style={styles.cardText}>Amount: KES {item.amount.toFixed(2)}</Text>
+          <Text style={styles.cardText}>
+            Date: {new Date(item.date).toLocaleDateString()}
+          </Text>
+        </Card.Content>
+      </Card>
+    </Animated.View>
+  );
+
   return (
     <View style={styles.container}>
-      <Text variant="titleLarge" style={styles.title}>Record Sale</Text>
-      <Menu
-        visible={menuVisible}
-        onDismiss={() => setMenuVisible(false)}
-        anchor={
-          <Button
-            mode="outlined"
-            onPress={() => setMenuVisible(true)}
-            style={styles.menuButton}
+      <LinearGradient
+        colors={['#1E1E1E', '#3A3A3A']}
+        style={styles.gradient}
+      >
+        <Text variant="displaySmall" style={styles.title}>
+          Record Sale
+        </Text>
+        <Animated.View
+          style={[
+            styles.formContainer,
+            {
+              opacity: formAnim,
+              transform: [
+                {
+                  translateY: formAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [50, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Menu
+            visible={menuVisible}
+            onDismiss={() => setMenuVisible(false)}
+            anchor={
+              <Button
+                mode="outlined"
+                onPress={() => setMenuVisible(true)}
+                style={styles.menuButton}
+                textColor="#333"
+                icon="menu-down"
+              >
+                {selectedItemId
+                  ? items.find((item) => item.id === selectedItemId)?.name || 'Select Item'
+                  : 'Select Item'}
+              </Button>
+            }
+            contentStyle={styles.menuContent}
           >
-            {selectedItemId
-              ? items.find((item) => item.id === selectedItemId)?.name || 'Select Item'
-              : 'Select Item'}
-          </Button>
-        }
-      >
-        {items.map((item) => (
-          <Menu.Item
-            key={item.id}
-            onPress={() => {
-              setSelectedItemId(item.id);
-              setMenuVisible(false);
-              setError('');
-            }}
-            title={`${item.name} - KES ${item.price.toFixed(2)} (Qty: ${item.quantity})`}
+            {items.length > 0 ? (
+              items.map((item) => (
+                <Menu.Item
+                  key={item.id}
+                  onPress={() => {
+                    setSelectedItemId(item.id);
+                    setMenuVisible(false);
+                    setError('');
+                  }}
+                  title={`${item.name} - KES ${item.price.toFixed(2)} (Qty: ${item.quantity})`}
+                  style={styles.menuItem}
+                  titleStyle={styles.menuItemText}
+                />
+              ))
+            ) : (
+              <Menu.Item title="No items available" disabled />
+            )}
+          </Menu>
+          <TextInput
+            label="Quantity"
+            value={quantity}
+            onChangeText={validateQuantity}
+            keyboardType="numeric"
+            mode="outlined"
+            style={styles.input}
+            theme={{ roundness: 10 }}
+            error={!!error}
           />
-        ))}
-      </Menu>
-      <TextInput
-        label="Quantity"
-        value={quantity}
-        onChangeText={(text) => {
-          setQuantity(text);
-          setError('');
-        }}
-        keyboardType="numeric"
-        mode="outlined"
-        style={styles.input}
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button
-        mode="contained"
-        onPress={handleSubmit}
-        style={styles.button}
-        disabled={!selectedItemId || !quantity}
-      >
-        Save Sale
-      </Button>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.buttonContainer}>
+            <Button
+              mode="outlined"
+              onPress={clearForm}
+              style={styles.formButton}
+              textColor="#FF6F61"
+            >
+              Clear
+            </Button>
+            <FAB
+              style={styles.fab}
+              icon="check"
+              onPress={handleSubmit}
+              color="#fff"
+              disabled={!selectedItemId || !quantity || !!error}
+            />
+          </View>
+        </Animated.View>
+        {recentSales.length > 0 && (
+          <View style={styles.recentSalesContainer}>
+            <Text variant="titleLarge" style={styles.recentSalesTitle}>
+              Recent Sales
+            </Text>
+            <FlatList
+              data={recentSales}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={renderSale}
+              contentContainerStyle={styles.recentSalesList}
+            />
+          </View>
+        )}
+      </LinearGradient>
     </View>
   );
 };
@@ -131,25 +282,105 @@ const SalesScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#f5f5f5',
+  },
+  gradient: {
+    flex: 1,
+    paddingTop: 40,
+    paddingHorizontal: 20,
   },
   title: {
+    color: '#fff',
+    fontWeight: '900',
+    textAlign: 'center',
     marginBottom: 20,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 8,
+  },
+  formContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   menuButton: {
-    marginBottom: 10,
+    marginBottom: 15,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  menuContent: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+  },
+  menuItem: {
+    paddingHorizontal: 15,
+  },
+  menuItemText: {
+    fontSize: 14,
+    color: '#333',
   },
   input: {
-    marginBottom: 10,
-  },
-  button: {
-    marginTop: 10,
-    paddingVertical: 5,
+    marginBottom: 15,
+    backgroundColor: '#fff',
   },
   error: {
-    color: 'red',
-    marginBottom: 10,
+    color: '#FF6F61',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  formButton: {
+    flex: 1,
+    marginRight: 10,
+    borderRadius: 10,
+    paddingVertical: 5,
+  },
+  fab: {
+    backgroundColor: '#FF6F61',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  recentSalesContainer: {
+    marginTop: 20,
+  },
+  recentSalesTitle: {
+    color: '#fff',
+    fontWeight: '700',
+    marginBottom: 15,
+  },
+  recentSalesList: {
+    paddingBottom: 20,
+  },
+  saleCard: {
+    marginBottom: 15,
+    borderRadius: 16,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  cardTitle: {
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 8,
+  },
+  cardText: {
+    fontSize: 16,
+    color: '#555',
+    marginVertical: 2,
   },
 });
 

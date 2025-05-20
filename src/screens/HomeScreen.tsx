@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   footer: {
-    marginTop: 20,
+    marginTop: 300,
     paddingVertical: 15,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,

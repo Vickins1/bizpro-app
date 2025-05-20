@@ -4,6 +4,7 @@ import { Text, SegmentedButtons, Card, FAB, Button, TextInput, useTheme } from '
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import db from '../database/db';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type SaleReport = {
   itemId: number;
@@ -26,8 +27,24 @@ const ReportsScreen: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [currency, setCurrency] = useState('KES');
   const summaryAnim = useRef(new Animated.Value(0)).current;
   const cardAnims = useRef<Animated.Value[]>([]).current;
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const savedSettings = await AsyncStorage.getItem('settings');
+        if (savedSettings) {
+          const parsedSettings = JSON.parse(savedSettings);
+          setCurrency(parsedSettings.currency || 'KES');
+        }
+      } catch (err) {
+        console.warn('Failed to load settings:', err);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const fetchReports = async (selectedPeriod: 'daily' | 'weekly' | 'monthly' | 'custom', start?: string, end?: string) => {
     try {
@@ -145,7 +162,7 @@ const ReportsScreen: React.FC = () => {
             {item.itemName}
           </Text>
           <Text style={styles.cardText}>Quantity Sold: {item.totalQuantity}</Text>
-          <Text style={styles.cardText}>Revenue: KES {item.totalAmount.toFixed(2)}</Text>
+          <Text style={styles.cardText}>Revenue: {currency} {item.totalAmount.toFixed(2)}</Text>
         </Card.Content>
       </Card>
     </Animated.View>
@@ -194,8 +211,8 @@ const ReportsScreen: React.FC = () => {
                 Summary
               </Text>
               <Text style={styles.cardText}>Total Sales: {summary.totalSales}</Text>
-              <Text style={styles.cardText}>Total Revenue: KES {summary.totalRevenue.toFixed(2)}</Text>
-              <Text style={styles.cardText}>Average Sale: KES {summary.averageSale.toFixed(2)}</Text>
+              <Text style={styles.cardText}>Total Revenue: {currency} {summary.totalRevenue.toFixed(2)}</Text>
+              <Text style={styles.cardText}>Average Sale: {currency} {summary.averageSale.toFixed(2)}</Text>
             </Card.Content>
           </Card>
         </Animated.View>
@@ -290,8 +307,8 @@ const styles = StyleSheet.create({
     textShadowRadius: 8,
   },
   segmentedButtons: {
-       marginVertical: 20,
-       backgroundColor: '#fff',
+    marginVertical: 20,
+    backgroundColor: '#fff',
     marginBottom: 20,
   },
   summaryCard: {

@@ -4,6 +4,7 @@ import { Button, Text, TextInput, Card, FAB, useTheme } from 'react-native-paper
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import db from '../database/db';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type InventoryItem = {
   id: number;
@@ -20,8 +21,24 @@ const InventoryScreen: React.FC = () => {
   const [price, setPrice] = useState('');
   const [error, setError] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
+  const [currency, setCurrency] = useState('KES');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const cardAnims = useRef<Animated.Value[]>([]).current;
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const savedSettings = await AsyncStorage.getItem('settings');
+        if (savedSettings) {
+          const parsedSettings = JSON.parse(savedSettings);
+          setCurrency(parsedSettings.currency || 'KES');
+        }
+      } catch (err) {
+        console.warn('Failed to load settings:', err);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const loadItems = async () => {
     try {
@@ -131,7 +148,7 @@ const InventoryScreen: React.FC = () => {
               {item.name}
             </Text>
             <Text style={styles.cardText}>Quantity: {item.quantity}</Text>
-            <Text style={styles.cardText}>Price: KES {item.price.toFixed(2)}</Text>
+            <Text style={styles.cardText}>Price: {currency} {item.price.toFixed(2)}</Text>
           </View>
           <Button
             mode="text"
@@ -139,7 +156,7 @@ const InventoryScreen: React.FC = () => {
             style={styles.deleteButton}
           >
             <MaterialCommunityIcons name="trash-can-outline" size={24} color="#FF6F61" />
-          </Button>
+            </Button>
         </Card.Content>
       </Card>
     </Animated.View>
@@ -199,7 +216,7 @@ const InventoryScreen: React.FC = () => {
                 theme={{ roundness: 10 }}
               />
               <TextInput
-                label="Price (KES)"
+                label={`Price (${currency})`}
                 value={price}
                 onChangeText={setPrice}
                 keyboardType="numeric"

@@ -1,3 +1,5 @@
+//src/database/db.ts
+
 import { openDatabaseSync } from 'expo-sqlite';
 
 const db = openDatabaseSync('bizpro.db');

@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Alert, FlatList, Animated, ScrollView } from 'react-native';
-import { Button, Text, TextInput, Menu, Card, FAB, useTheme } from 'react-native-paper';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, FlatList, Alert, ScrollView, Animated } from 'react-native';
+import { Button, Text, TextInput, Card, FAB, Menu, useTheme } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import db from '../database/db';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Dimensions } from 'react-native';
 
 type InventoryItem = {
   id: number;
@@ -22,6 +23,8 @@ type Sale = {
   date: string;
 };
 
+const { width, height } = Dimensions.get('window');
+
 const SalesScreen: React.FC = () => {
   const theme = useTheme();
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -31,8 +34,8 @@ const SalesScreen: React.FC = () => {
   const [error, setError] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
   const [currency, setCurrency] = useState('KES');
-  const formAnim = useRef(new Animated.Value(0)).current;
-  const cardAnims = useRef<Animated.Value[]>([]).current;
+  const [cardAnims, setCardAnims] = useState<Animated.Value[]>([]);
+  const formAnim = useState(new Animated.Value(0))[0];
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -57,6 +60,9 @@ const SalesScreen: React.FC = () => {
       duration: 500,
       useNativeDriver: true,
     }).start();
+    return () => {
+      cardAnims.forEach(anim => anim.setValue(0));
+    };
   }, []);
 
   const fetchItems = async () => {
@@ -78,10 +84,10 @@ const SalesScreen: React.FC = () => {
          LIMIT 5`
       );
       setRecentSales(result);
-      cardAnims.length = 0;
-      cardAnims.push(...result.map(() => new Animated.Value(0)));
-      result.forEach((_, index) => {
-        Animated.timing(cardAnims[index], {
+      const anims = result.map(() => new Animated.Value(0));
+      setCardAnims(anims);
+      anims.forEach((anim, index) => {
+        Animated.timing(anim, {
           toValue: 1,
           duration: 300,
           delay: index * 100,
@@ -175,12 +181,16 @@ const SalesScreen: React.FC = () => {
     >
       <Card>
         <Card.Content>
-          <Text variant="titleMedium" style={styles.cardTitle}>
+          <Text variant="titleMedium" style={[styles.cardTitle, { fontSize: width * 0.045 }]}>
             {item.itemName}
           </Text>
-          <Text style={styles.cardText}>Quantity: {item.quantity}</Text>
-          <Text style={styles.cardText}>Amount: {currency} {item.amount.toFixed(2)}</Text>
-          <Text style={styles.cardText}>
+          <Text style={[styles.cardText, { fontSize: width * 0.04 }]}>
+            Quantity: {item.quantity}
+          </Text>
+          <Text style={[styles.cardText, { fontSize: width * 0.04 }]}>
+            Amount: {currency} {item.amount.toFixed(2)}
+          </Text>
+          <Text style={[styles.cardText, { fontSize: width * 0.04 }]}>
             Date: {new Date(item.date).toLocaleDateString()}
           </Text>
         </Card.Content>
@@ -195,10 +205,10 @@ const SalesScreen: React.FC = () => {
         style={styles.gradient}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContainer}
+          contentContainerStyle={[styles.scrollContainer, { paddingBottom: height * 0.12 }]}
           showsVerticalScrollIndicator={false}
         >
-          <Text variant="displaySmall" style={styles.title}>
+          <Text variant="displaySmall" style={[styles.title, { fontSize: width * 0.08 }]}>
             Record Sale
           </Text>
           <Animated.View
@@ -246,7 +256,7 @@ const SalesScreen: React.FC = () => {
                     }}
                     title={`${item.name} - ${currency} ${item.price.toFixed(2)} (Qty: ${item.quantity})`}
                     style={styles.menuItem}
-                    titleStyle={styles.menuItemText}
+                    titleStyle={[styles.menuItemText, { fontSize: width * 0.035 }]}
                   />
                 ))
               ) : (
@@ -263,7 +273,7 @@ const SalesScreen: React.FC = () => {
               theme={{ roundness: 10 }}
               error={!!error}
             />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error ? <Text style={[styles.error, { fontSize: width * 0.04 }]}>{error}</Text> : null}
             <View style={styles.buttonContainer}>
               <Button
                 mode="outlined"
@@ -284,7 +294,7 @@ const SalesScreen: React.FC = () => {
           </Animated.View>
           {recentSales.length > 0 && (
             <View style={styles.recentSalesContainer}>
-              <Text variant="titleLarge" style={styles.recentSalesTitle}>
+              <Text variant="titleLarge" style={[styles.recentSalesTitle, { fontSize: width * 0.05 }]}>
                 Recent Sales
               </Text>
               <FlatList
@@ -307,17 +317,17 @@ const styles = StyleSheet.create({
   },
   gradient: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: '5%',
   },
   scrollContainer: {
-    paddingTop: 40,
-    paddingBottom: 100, // Increased to account for navbar
+    paddingTop: '10%',
+    paddingBottom: '15%',
   },
   title: {
     color: '#fff',
     fontWeight: '900',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: '5%',
     textShadowColor: 'rgba(0, 0, 0, 0.8)',
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 8,
@@ -325,8 +335,8 @@ const styles = StyleSheet.create({
   formContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.98)',
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+    padding: '5%',
+    marginBottom: '5%',
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -334,7 +344,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   menuButton: {
-    marginBottom: 15,
+    marginBottom: '4%',
     borderRadius: 10,
     backgroundColor: '#fff',
   },
@@ -343,19 +353,18 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   menuItem: {
-    paddingHorizontal: 15,
+    paddingHorizontal: '4%',
   },
   menuItemText: {
-    fontSize: 14,
     color: '#333',
   },
   input: {
-    marginBottom: 15,
+    marginBottom: '4%',
     backgroundColor: '#fff',
   },
   error: {
     color: '#FF6F61',
-    marginBottom: 15,
+    marginBottom: '4%',
     textAlign: 'center',
   },
   buttonContainer: {
@@ -365,9 +374,9 @@ const styles = StyleSheet.create({
   },
   formButton: {
     flex: 1,
-    marginRight: 10,
+    marginRight: '3%',
     borderRadius: 10,
-    paddingVertical: 5,
+    paddingVertical: '2%',
   },
   fab: {
     backgroundColor: '#FF6F61',
@@ -378,18 +387,18 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   recentSalesContainer: {
-    marginTop: 20,
+    marginTop: '5%',
   },
   recentSalesTitle: {
     color: '#fff',
     fontWeight: '700',
-    marginBottom: 15,
+    marginBottom: '4%',
   },
   recentSalesList: {
-    paddingBottom: 20,
+    paddingBottom: '5%',
   },
   saleCard: {
-    marginBottom: 15,
+    marginBottom: '4%',
     borderRadius: 16,
     elevation: 6,
     shadowColor: '#000',
@@ -400,12 +409,11 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontWeight: '700',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: '2%',
   },
   cardText: {
-    fontSize: 16,
     color: '#555',
-    marginVertical: 2,
+    marginVertical: '1%',
   },
 });
 

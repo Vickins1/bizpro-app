@@ -1,10 +1,22 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { FlatList, View, StyleSheet, Animated, Modal, Alert } from 'react-native';
-import { Button, Text, TextInput, Card, FAB, useTheme } from 'react-native-paper';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  FlatList,
+  View,
+  StyleSheet,
+  Animated,
+  Modal,
+  Alert,
+  ViewStyle,
+  TextStyle,
+} from 'react-native';
+import { Button, Text, TextInput, useTheme } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import db from '../database/db';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Dimensions } from 'react-native';
+import { theme, globalStyles } from '../theme';
+import GradientCard from '../components/GradientCard';
 
 type InventoryItem = {
   id: number;
@@ -13,8 +25,10 @@ type InventoryItem = {
   price: number;
 };
 
+const { width, height } = Dimensions.get('window');
+
 const InventoryScreen: React.FC = () => {
-  const theme = useTheme();
+  const paperTheme = useTheme();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -22,8 +36,8 @@ const InventoryScreen: React.FC = () => {
   const [error, setError] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [currency, setCurrency] = useState('KES');
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const cardAnims = useRef<Animated.Value[]>([]).current;
+  const [cardAnims, setCardAnims] = useState<Animated.Value[]>([]);
+  const modalAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -31,23 +45,26 @@ const InventoryScreen: React.FC = () => {
         const savedSettings = await AsyncStorage.getItem('settings');
         if (savedSettings) {
           const parsedSettings = JSON.parse(savedSettings);
-          setCurrency(parsedSettings.currency || 'KES');
+          setCurrency(parsedSettings.currency ?? 'KES');
         }
       } catch (err) {
-        console.warn('Failed to load settings:', err);
+        Alert.alert('Error', 'Failed to load settings. Please try again.', [
+          { text: 'Retry', onPress: () => loadSettings() },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
       }
     };
     loadSettings();
   }, []);
 
-  const loadItems = async () => {
+  const loadItems = useCallback(async () => {
     try {
       const result = await db.getAllAsync<InventoryItem>('SELECT * FROM inventory ORDER BY id DESC');
-      setItems(result);
-      cardAnims.length = 0; // Clear previous animations
-      cardAnims.push(...result.map(() => new Animated.Value(0)));
-      result.forEach((_, index) => {
-        Animated.timing(cardAnims[index], {
+      setItems(result ?? []);
+      const anims = result?.map(() => new Animated.Value(0)) ?? [];
+      setCardAnims(anims);
+      anims.forEach((anim, index) => {
+        Animated.timing(anim, {
           toValue: 1,
           duration: 300,
           delay: index * 100,
@@ -55,11 +72,14 @@ const InventoryScreen: React.FC = () => {
         }).start();
       });
     } catch (err) {
-      Alert.alert('Error', 'Failed to load inventory');
+      Alert.alert('Error', 'Failed to load inventory. Please try again.', [
+        { text: 'Retry', onPress: () => loadItems() },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
     }
-  };
+  }, []);
 
-  const addItem = async () => {
+  const addItem = useCallback(async () => {
     if (!name || !quantity || !price) {
       setError('All fields are required');
       return;
@@ -85,11 +105,14 @@ const InventoryScreen: React.FC = () => {
       loadItems();
       Alert.alert('Success', 'Item added to inventory');
     } catch (err) {
-      Alert.alert('Error', 'Failed to add item');
+      Alert.alert('Error', 'Failed to add item. Please try again.', [
+        { text: 'Retry', onPress: () => addItem() },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
     }
-  };
+  }, [name, quantity, price, loadItems]);
 
-  const deleteItem = async (id: number, name: string) => {
+  const deleteItem = useCallback(async (id: number, name: string) => {
     Alert.alert(
       'Confirm Delete',
       `Are you sure you want to delete "${name}"?`,
@@ -104,98 +127,134 @@ const InventoryScreen: React.FC = () => {
               loadItems();
               Alert.alert('Success', 'Item deleted from inventory');
             } catch (err) {
-              Alert.alert('Error', 'Failed to delete item');
+              Alert.alert('Error', 'Failed to delete item. Please try again.', [
+                { text: 'Retry', onPress: () => deleteItem(id, name) },
+                { text: 'Cancel', style: 'cancel' },
+              ]);
             }
           },
         },
       ]
     );
-  };
+  }, [loadItems]);
 
   useEffect(() => {
     loadItems();
-  }, []);
+  }, [loadItems]);
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
+    Animated.timing(modalAnim, {
       toValue: modalVisible ? 1 : 0,
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [modalVisible]);
+  }, [modalVisible, modalAnim]);
 
   const renderItem = ({ item, index }: { item: InventoryItem; index: number }) => (
-    <Animated.View
-      style={[
-        styles.card,
-        {
-          opacity: cardAnims[index] || 0,
-          transform: [
-            {
-              translateY: cardAnims[index]?.interpolate({
-                inputRange: [0, 1],
-                outputRange: [50, 0],
-              }) || 0,
-            },
-          ],
-        },
-      ]}
-    >
-      <Card>
-        <Card.Content style={styles.cardContent}>
+    <Animated.View style={{ opacity: cardAnims[index], transform: [{ scale: cardAnims[index] }] }}>
+      <GradientCard>
+        <View style={styles.cardContent}>
           <View style={styles.cardTextContainer}>
-            <Text variant="titleMedium" style={styles.cardTitle}>
+            <Text
+              variant="titleMedium"
+              style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize }]}
+              accessible={true}
+              accessibilityLabel={`Item: ${item.name}`}
+            >
               {item.name}
             </Text>
-            <Text style={styles.cardText}>Quantity: {item.quantity}</Text>
-            <Text style={styles.cardText}>Price: {currency} {item.price.toFixed(2)}</Text>
+            <Text style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize }]}>
+              Quantity: {item.quantity}
+            </Text>
+            <Text style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize }]}>
+              Price: {currency} {item.price.toFixed(2)}
+            </Text>
           </View>
           <Button
             mode="text"
             onPress={() => deleteItem(item.id, item.name)}
             style={styles.deleteButton}
+            accessible={true}
+            accessibilityLabel={`Delete ${item.name}`}
           >
-            <MaterialCommunityIcons name="trash-can-outline" size={24} color="#FF6F61" />
-            </Button>
-        </Card.Content>
-      </Card>
+            <MaterialCommunityIcons
+              name="trash-can-outline"
+              size={theme.typography.title.fontSize}
+              color={theme.colors.error}
+            />
+          </Button>
+        </View>
+      </GradientCard>
     </Animated.View>
   );
 
   return (
-    <View style={styles.container}>
+    <View style={globalStyles.container}>
       <LinearGradient
-        colors={['#1E1E1E', '#3A3A3A']}
+        colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
         style={styles.gradient}
       >
-        <Text variant="displaySmall" style={styles.title}>
+        <Text
+          variant="displaySmall"
+          style={[globalStyles.title, { fontSize: theme.typography.display.fontSize }]}
+          accessible={true}
+          accessibilityLabel="Inventory Management Title"
+        >
           Inventory Management
         </Text>
         <FlatList
           data={items}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
-          ListEmptyComponent={<Text style={styles.empty}>No items in inventory</Text>}
-          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <Text style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, textAlign: 'center' }]}>
+              No items in inventory
+            </Text>
+          }
+          contentContainerStyle={[styles.listContainer, { paddingBottom: height * 0.15 }]}
         />
-        <FAB
-          style={styles.fab}
-          icon="plus"
+        <Button
+          mode="contained"
           onPress={() => setModalVisible(true)}
-          color="#fff"
-        />
+          style={styles.addButton}
+          icon="plus"
+          buttonColor={theme.colors.primary}
+          textColor={theme.colors.accent}
+          accessible={true}
+          accessibilityLabel="Add new inventory item"
+        >
+          Add New Item
+        </Button>
         <Modal
           animationType="none"
           transparent
           visible={modalVisible}
           onRequestClose={() => setModalVisible(false)}
         >
-          <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
+          <Animated.View
+            style={[
+              styles.modalOverlay,
+              {
+                opacity: modalAnim,
+                transform: [
+                  {
+                    scale: modalAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.8, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
             <LinearGradient
-              colors={['#FFFFFF', '#F5F5F5']}
-              style={styles.modalContent}
+              colors={[theme.colors.background, '#F5F5F5']}
+              style={[styles.modalContent, { maxWidth: width * 0.9 }]}
             >
-              <Text variant="titleLarge" style={styles.modalTitle}>
+              <Text
+                variant="titleLarge"
+                style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, textAlign: 'center' }]}
+              >
                 Add New Item
               </Text>
               <TextInput
@@ -204,7 +263,9 @@ const InventoryScreen: React.FC = () => {
                 onChangeText={setName}
                 style={styles.input}
                 mode="outlined"
-                theme={{ roundness: 10 }}
+                theme={{ roundness: theme.borderRadius.medium }}
+                accessible={true}
+                accessibilityLabel="Item name input"
               />
               <TextInput
                 label="Quantity"
@@ -213,7 +274,9 @@ const InventoryScreen: React.FC = () => {
                 keyboardType="numeric"
                 style={styles.input}
                 mode="outlined"
-                theme={{ roundness: 10 }}
+                theme={{ roundness: theme.borderRadius.medium }}
+                accessible={true}
+                accessibilityLabel="Quantity input"
               />
               <TextInput
                 label={`Price (${currency})`}
@@ -222,15 +285,23 @@ const InventoryScreen: React.FC = () => {
                 keyboardType="numeric"
                 style={styles.input}
                 mode="outlined"
-                theme={{ roundness: 10 }}
+                theme={{ roundness: theme.borderRadius.medium }}
+                accessible={true}
+                accessibilityLabel={`Price input in ${currency}`}
               />
-              {error ? <Text style={styles.error}>{error}</Text> : null}
+              {error ? (
+                <Text style={[styles.error, { fontSize: theme.typography.caption.fontSize }]}>
+                  {error}
+                </Text>
+              ) : null}
               <View style={styles.modalButtons}>
                 <Button
                   mode="outlined"
                   onPress={() => setModalVisible(false)}
                   style={styles.modalButton}
-                  textColor="#FF6F61"
+                  textColor={theme.colors.error}
+                  accessible={true}
+                  accessibilityLabel="Cancel adding item"
                 >
                   Cancel
                 </Button>
@@ -238,7 +309,9 @@ const InventoryScreen: React.FC = () => {
                   mode="contained"
                   onPress={addItem}
                   style={styles.modalButton}
-                  buttonColor="#FF6F61"
+                  buttonColor={theme.colors.primary}
+                  accessible={true}
+                  accessibilityLabel="Add item to inventory"
                 >
                   Add Item
                 </Button>
@@ -252,115 +325,64 @@ const InventoryScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   gradient: {
     flex: 1,
-    paddingTop: 40,
-    paddingHorizontal: 20,
-  },
-  title: {
-    color: '#fff',
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 20,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 8,
-  },
+    paddingTop: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+  } as ViewStyle,
   listContainer: {
-    paddingBottom: 80,
-  },
-  card: {
-    marginBottom: 15,
-    borderRadius: 16,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
+    paddingBottom: theme.spacing.xl,
+  } as ViewStyle,
   cardContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
+    padding: theme.spacing.sm,
+  } as ViewStyle,
   cardTextContainer: {
     flex: 1,
-  },
-  cardTitle: {
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 8,
-  },
-  cardText: {
-    fontSize: 16,
-    color: '#555',
-    marginVertical: 2,
-  },
+  } as ViewStyle,
   deleteButton: {
-    marginLeft: 10,
-  },
-  empty: {
-    textAlign: 'center',
-    color: '#E0E0E0',
-    fontSize: 16,
-    marginTop: 20,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    backgroundColor: '#FF6F61',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-  },
+    marginLeft: theme.spacing.sm,
+  } as ViewStyle,
+  addButton: {
+    marginVertical: theme.spacing.md,
+    marginHorizontal: theme.spacing.md,
+    marginBottom: height * 0.15, // Increased bottom margin for navigation bar
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.medium,
+  } as ViewStyle,
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: theme.colors.modalOverlay,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-  },
+    padding: theme.spacing.md,
+  } as ViewStyle,
   modalContent: {
     width: '100%',
-    maxWidth: 400,
-    padding: 20,
-    borderRadius: 16,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  modalTitle: {
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.medium,
+    ...theme.shadow,
+  } as ViewStyle,
   input: {
-    marginBottom: 15,
-    backgroundColor: '#fff',
-  },
+    marginBottom: theme.spacing.sm,
+    backgroundColor: theme.colors.background,
+  } as ViewStyle,
   error: {
-    color: '#FF6F61',
-    marginBottom: 15,
+    color: theme.colors.error,
+    marginBottom: theme.spacing.sm,
     textAlign: 'center',
-  },
+  } as TextStyle,
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
+  } as ViewStyle,
   modalButton: {
     flex: 1,
-    marginHorizontal: 5,
-    paddingVertical: 5,
-  },
+    marginHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xs,
+  } as ViewStyle,
 });
 
 export default InventoryScreen;

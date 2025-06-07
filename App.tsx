@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, StyleSheet, View, Image } from 'react-native';
+import { Animated, StyleSheet, View, Image, Dimensions } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -31,19 +31,19 @@ export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
   const scaleAnim = useState(new Animated.Value(0.8))[0];
+  const { width, height } = Dimensions.get('window');
 
   useEffect(() => {
     async function prepare() {
       try {
         await initDB();
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (e) {
-        console.warn(e);
+        console.warn('Initialization error:', e);
       } finally {
         setAppIsReady(true);
       }
     }
-
     prepare();
   }, []);
 
@@ -52,7 +52,7 @@ export default function App() {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 1000,
+          duration: 800,
           useNativeDriver: true,
         }),
         Animated.spring(scaleAnim, {
@@ -64,7 +64,7 @@ export default function App() {
       ]).start(() => {
         Animated.timing(fadeAnim, {
           toValue: 0,
-          duration: 500,
+          duration: 400,
           useNativeDriver: true,
         }).start(() => {
           SplashScreen.hideAsync();
@@ -85,7 +85,7 @@ export default function App() {
         ]}>
           <Image
             source={require('./assets/logo.png')}
-            style={styles.logo}
+            style={[styles.logo, { width: width * 0.5, height: width * 0.5 }]}
             resizeMode="contain"
           />
         </Animated.View>
@@ -95,18 +95,20 @@ export default function App() {
 
   const tabBarIcon = ({ route, color, size, focused }: { route: keyof RootStackParamList; color: string; size: number; focused: boolean }) => {
     let iconName: 'home' | 'warehouse' | 'cash-register' | 'chart-bar' | 'cog';
-    if (route === 'Home') iconName = 'home';
-    else if (route === 'Inventory') iconName = 'warehouse';
-    else if (route === 'Sales') iconName = 'cash-register';
-    else if (route === 'Reports') iconName = 'chart-bar';
-    else iconName = 'cog';
+    switch (route) {
+      case 'Home': iconName = 'home'; break;
+      case 'Inventory': iconName = 'warehouse'; break;
+      case 'Sales': iconName = 'cash-register'; break;
+      case 'Reports': iconName = 'chart-bar'; break;
+      default: iconName = 'cog';
+    }
 
-    const scaleAnim = new Animated.Value(focused ? 1.2 : 1);
+    const scaleAnim = new Animated.Value(focused ? 1.1 : 1);
     const opacityAnim = new Animated.Value(focused ? 1 : 0.7);
 
     Animated.parallel([
       Animated.spring(scaleAnim, {
-        toValue: focused ? 1.2 : 1,
+        toValue: focused ? 1.1 : 1,
         friction: 8,
         tension: 40,
         useNativeDriver: true,
@@ -132,35 +134,34 @@ export default function App() {
           screenOptions={({ route }) => ({
             tabBarIcon: ({ color, size, focused }) => tabBarIcon({ route: route.name as keyof RootStackParamList, color, size, focused }),
             tabBarLabelStyle: {
-              fontSize: 11,
+              fontSize: width * 0.03,
               fontWeight: '600',
-              marginBottom: 6,
+              marginBottom: 8,
               letterSpacing: 0.5,
             },
             tabBarActiveTintColor: '#FF6F61',
-            tabBarInactiveTintColor: '#E0E0E0',
+            tabBarInactiveTintColor: '#B0B0B0',
             tabBarStyle: {
-              backgroundColor: 'rgba(255, 255, 255, 0.15)',
+              backgroundColor: 'rgba(255, 255, 255, 0.95)',
               borderTopWidth: 0,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
-              height: 80,
-              paddingTop: 8,
-              paddingBottom: 10,
-              paddingHorizontal: 10,
+              height: height * 0.1,
+              paddingTop: 10,
+              paddingBottom: height * 0.015,
+              paddingHorizontal: 12,
               shadowColor: '#000',
-              shadowOffset: { width: 0, height: -4 },
-              shadowOpacity: 0.2,
-              shadowRadius: 10,
-              elevation: 12,
+              shadowOffset: { width: 0, height: -2 },
+              shadowOpacity: 0.15,
+              shadowRadius: 8,
+              elevation: 10,
               position: 'absolute',
-              overflow: 'hidden',
             },
             tabBarItemStyle: {
               borderRadius: 12,
-              marginHorizontal: 4,
-              paddingVertical: 4,
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              marginHorizontal: 6,
+              paddingVertical: 6,
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
             },
             headerShown: false,
           })}
@@ -184,12 +185,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6F61',
   },
   logoContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   logo: {
-    width: 200,
-    height: 200,
+    maxWidth: '80%',
+    maxHeight: '80%',
   },
 });

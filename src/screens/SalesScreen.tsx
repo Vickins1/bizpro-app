@@ -1,11 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, FlatList, Alert, ScrollView, Animated } from 'react-native';
-import { Button, Text, TextInput, Card, FAB, Menu, useTheme } from 'react-native-paper';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, StyleSheet, FlatList, ScrollView, Animated, Alert, ViewStyle, TextStyle } from 'react-native';
+import { Button, Text, TextInput, FAB, Menu } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import db from '../database/db';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Dimensions } from 'react-native';
+import { globalStyles } from '../theme';
+import db from '../database/db';
+import GradientCard from '../components/GradientCard';
+import { useAppTheme } from '../context/ThemeContext';
 
 type InventoryItem = {
   id: number;
@@ -26,55 +29,62 @@ type Sale = {
 const { width, height } = Dimensions.get('window');
 
 const SalesScreen: React.FC = () => {
-  const theme = useTheme();
+  const { theme } = useAppTheme();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState('');
-  const [error, setError] = useState('');
+  const [errorText, setError] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
   const [currency, setCurrency] = useState('KES');
   const [cardAnims, setCardAnims] = useState<Animated.Value[]>([]);
-  const formAnim = useState(new Animated.Value(0))[0];
+  const formAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const savedSettings = await AsyncStorage.getItem('settings');
-        if (savedSettings) {
-          const parsedSettings = JSON.parse(savedSettings);
+        const saved = await AsyncStorage.getItem('settings');
+        if (saved) {
+          const parsedSettings = JSON.parse(saved);
           setCurrency(parsedSettings.currency || 'KES');
         }
       } catch (err) {
-        console.warn('Failed to load settings:', err);
+        Alert.alert('Error', 'Failed to load settings', [
+          { text: 'Retry', onPress: () => loadSettings() },
+          { text: 'Cancel' },
+        ]);
       }
     };
-    loadSettings();
-  }, []);
 
-  useEffect(() => {
+    loadSettings();
     fetchItems();
     fetchRecentSales();
+
     Animated.timing(formAnim, {
       toValue: 1,
-      duration: 500,
+      duration: 300,
       useNativeDriver: true,
     }).start();
-    return () => {
-      cardAnims.forEach(anim => anim.setValue(0));
-    };
-  }, []);
 
-  const fetchItems = async () => {
+    return () => {
+      cardAnims.forEach(anim => anim.stopAnimation());
+      formAnim.stopAnimation();
+    };
+  }, [cardAnims, formAnim]);
+
+  const fetchItems = useCallback(async () => {
     try {
       const result = await db.getAllAsync<InventoryItem>('SELECT * FROM inventory WHERE quantity > 0');
-      setItems(result);
+      setItems(result ?? []);
     } catch (err) {
-      Alert.alert('Error', 'Failed to load items');
+      Alert.alert('Error', 'Failed to load items', [
+        { text: 'Retry', onPress: () => fetchItems() },
+        { text: 'Cancel' },
+      ]);
     }
-  };
+  }, []);
 
-  const fetchRecentSales = async () => {
+  const fetchRecentSales = useCallback(async () => {
     try {
       const result = await db.getAllAsync<Sale>(
         `SELECT s.id, s.itemId, i.name as itemName, s.quantity, s.amount, s.date 
@@ -83,7 +93,7 @@ const SalesScreen: React.FC = () => {
          ORDER BY s.date DESC 
          LIMIT 5`
       );
-      setRecentSales(result);
+      setRecentSales(result ?? []);
       const anims = result.map(() => new Animated.Value(0));
       setCardAnims(anims);
       anims.forEach((anim, index) => {
@@ -95,29 +105,42 @@ const SalesScreen: React.FC = () => {
         }).start();
       });
     } catch (err) {
-      Alert.alert('Error', 'Failed to load recent sales');
+      Alert.alert('Error', 'Failed to load recent sales', [
+        { text: 'Retry', onPress: () => fetchRecentSales() },
+        { text: 'Cancel' },
+      ]);
     }
-  };
+  }, []);
 
-  const getSelectedItem = () => items.find((item) => item.id === selectedItemId);
+  const getSelectedItem = useCallback(() => items.find((item) => item.id === selectedItemId), [items, selectedItemId]);
 
-  const validateQuantity = (text: string) => {
-    const qty = parseInt(text);
-    const item = getSelectedItem();
-    if (item && (!isNaN(qty) && qty > item.quantity)) {
-      setError(`Quantity exceeds available stock (${item.quantity})`);
-    } else {
-      setError('');
-    }
-    setQuantity(text);
-  };
+  const validateQuantity = useCallback(
+    (text: string) => {
+      if (!text.trim()) {
+        setError('Quantity is required');
+        setQuantity(text);
+        return;
+      }
+      const qty = parseInt(text);
+      const item = getSelectedItem();
+      if (isNaN(qty) || qty <= 0) {
+        setError('Enter a positive number');
+      } else if (item && qty > item.quantity) {
+        setError(`Quantity exceeds available stock (${item.quantity})`);
+      } else {
+        setError('');
+      }
+      setQuantity(text);
+    },
+    [getSelectedItem]
+  );
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     const item = getSelectedItem();
     const qty = parseInt(quantity);
 
     if (!item || isNaN(qty) || qty <= 0) {
-      setError('Please select an item and enter a valid quantity');
+      setError('Select an item and enter a valid quantity');
       return;
     }
 
@@ -151,64 +174,85 @@ const SalesScreen: React.FC = () => {
       fetchItems();
       fetchRecentSales();
     } catch (err) {
-      Alert.alert('Error', 'Failed to save sale');
+      Alert.alert('Error', 'Failed to save sale', [
+        { text: 'Retry', onPress: () => handleSubmit() },
+        { text: 'Cancel' },
+      ]);
     }
-  };
+  }, [getSelectedItem, quantity, currency, fetchItems, fetchRecentSales]);
 
-  const clearForm = () => {
+  const clearForm = useCallback(() => {
     setSelectedItemId(null);
     setQuantity('');
     setError('');
     setMenuVisible(false);
-  };
+  }, []);
 
   const renderSale = ({ item, index }: { item: Sale; index: number }) => (
     <Animated.View
-      style={[
-        styles.saleCard,
-        {
-          opacity: cardAnims[index] || 0,
-          transform: [
-            {
-              translateY: cardAnims[index]?.interpolate({
-                inputRange: [0, 1],
-                outputRange: [50, 0],
-              }) || 0,
-            },
-          ],
-        },
-      ]}
+      style={{
+        opacity: cardAnims[index] || 1,
+        transform: [
+          {
+            translateY: cardAnims[index]?.interpolate({
+              inputRange: [0, 1],
+              outputRange: [20, 0],
+            }) || 0,
+          },
+        ],
+      }}
     >
-      <Card>
-        <Card.Content>
-          <Text variant="titleMedium" style={[styles.cardTitle, { fontSize: width * 0.045 }]}>
-            {item.itemName}
-          </Text>
-          <Text style={[styles.cardText, { fontSize: width * 0.04 }]}>
-            Quantity: {item.quantity}
-          </Text>
-          <Text style={[styles.cardText, { fontSize: width * 0.04 }]}>
-            Amount: {currency} {item.amount.toFixed(2)}
-          </Text>
-          <Text style={[styles.cardText, { fontSize: width * 0.04 }]}>
-            Date: {new Date(item.date).toLocaleDateString()}
-          </Text>
-        </Card.Content>
-      </Card>
+      <GradientCard accessibilityLabel={`Recent sale: ${item.itemName}`} accessibilityRole="region">
+        <Text
+          variant="titleMedium"
+          style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
+          accessible={true}
+          accessibilityLabel={`Sale: ${item.itemName}`}
+        >
+          {item.itemName}
+        </Text>
+        <Text
+          style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+          accessible={true}
+          accessibilityLabel={`Quantity: ${item.quantity}`}
+        >
+          Quantity: {item.quantity}
+        </Text>
+        <Text
+          style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+          accessible={true}
+          accessibilityLabel={`Amount: ${currency} ${item.amount.toFixed(2)}`}
+        >
+          Amount: {currency} {item.amount.toFixed(2)}
+        </Text>
+        <Text
+          style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+          accessible={true}
+          accessibilityLabel={`Date: ${new Date(item.date).toLocaleDateString()}`}
+        >
+          Date: {new Date(item.date).toLocaleDateString()}
+        </Text>
+      </GradientCard>
     </Animated.View>
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[globalStyles.container, { backgroundColor: theme.colors.background }]}>
       <LinearGradient
-        colors={['#1E1E1E', '#3A3A3A']}
+        colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
         style={styles.gradient}
       >
         <ScrollView
-          contentContainerStyle={[styles.scrollContainer, { paddingBottom: height * 0.12 }]}
+          contentContainerStyle={[styles.scrollContainer, { paddingBottom: height * 0.15 }]}
           showsVerticalScrollIndicator={false}
         >
-          <Text variant="displaySmall" style={[styles.title, { fontSize: width * 0.08 }]}>
+          <Text
+            variant="displaySmall"
+            style={[globalStyles.title, { fontSize: theme.typography.display.fontSize, color: theme.colors.text }]}
+            accessible={true}
+            accessibilityLabel="Record Sale Title"
+            accessibilityRole="header"
+          >
             Record Sale
           </Text>
           <Animated.View
@@ -216,14 +260,7 @@ const SalesScreen: React.FC = () => {
               styles.formContainer,
               {
                 opacity: formAnim,
-                transform: [
-                  {
-                    translateY: formAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [50, 0],
-                    }),
-                  },
-                ],
+                transform: [{ translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
               },
             ]}
           >
@@ -235,15 +272,18 @@ const SalesScreen: React.FC = () => {
                   mode="outlined"
                   onPress={() => setMenuVisible(true)}
                   style={styles.menuButton}
-                  textColor="#333"
+                  textColor={theme.colors.text}
                   icon="menu-down"
+                  accessible={true}
+                  accessibilityLabel="Select inventory item"
+                  accessibilityRole="button"
                 >
                   {selectedItemId
                     ? items.find((item) => item.id === selectedItemId)?.name || 'Select Item'
                     : 'Select Item'}
                 </Button>
               }
-              contentStyle={styles.menuContent}
+              contentStyle={[styles.menuContent, { backgroundColor: theme.colors.background }]}
             >
               {items.length > 0 ? (
                 items.map((item) => (
@@ -256,11 +296,12 @@ const SalesScreen: React.FC = () => {
                     }}
                     title={`${item.name} - ${currency} ${item.price.toFixed(2)} (Qty: ${item.quantity})`}
                     style={styles.menuItem}
-                    titleStyle={[styles.menuItemText, { fontSize: width * 0.035 }]}
+                    titleStyle={[styles.menuItemText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                    accessibilityLabel={`Select ${item.name}`}
                   />
                 ))
               ) : (
-                <Menu.Item title="No items available" disabled />
+                <Menu.Item title="No items available" disabled accessibilityLabel="No items available" />
               )}
             </Menu>
             <TextInput
@@ -270,31 +311,65 @@ const SalesScreen: React.FC = () => {
               keyboardType="numeric"
               mode="outlined"
               style={styles.input}
-              theme={{ roundness: 10 }}
-              error={!!error}
+              theme={{
+                roundness: 8, // theme.borderRadius.medium
+                colors: {
+                  text: theme.colors.text,
+                  primary: theme.colors.primary,
+                  background: theme.colors.background === '#1A1A1A' ? '#2A2A2A' : '#E0E0E0',
+                  placeholder: theme.colors.secondary,
+                  outline: theme.colors.primary,
+                },
+              }}
+              textColor={theme.colors.text}
+              error={!!errorText}
+              accessible={true}
+              accessibilityLabel="Quantity input"
+              accessibilityRole="text"
             />
-            {error ? <Text style={[styles.error, { fontSize: width * 0.04 }]}>{error}</Text> : null}
+            {errorText ? (
+              <Text
+                style={[styles.error, { fontSize: theme.typography.caption.fontSize, color: theme.colors.error }]}
+                accessible={true}
+                accessibilityLabel={`Error: ${errorText}`}
+              >
+                {errorText}
+              </Text>
+            ) : null}
             <View style={styles.buttonContainer}>
               <Button
                 mode="outlined"
                 onPress={clearForm}
                 style={styles.formButton}
-                textColor="#FF6F61"
+                textColor={theme.colors.error}
+                accessible={true}
+                accessibilityLabel="Clear form"
+                accessibilityRole="button"
               >
                 Clear
               </Button>
               <FAB
-                style={styles.fab}
+                style={[styles.fab, { backgroundColor: theme.colors.primary }]}
                 icon="check"
                 onPress={handleSubmit}
-                color="#fff"
-                disabled={!selectedItemId || !quantity || !!error}
+                color={theme.colors.accent}
+                disabled={!selectedItemId || !quantity || !!errorText}
+                accessible={true}
+                accessibilityLabel="Submit sale"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !selectedItemId || !quantity || !!errorText }}
               />
             </View>
           </Animated.View>
           {recentSales.length > 0 && (
             <View style={styles.recentSalesContainer}>
-              <Text variant="titleLarge" style={[styles.recentSalesTitle, { fontSize: width * 0.05 }]}>
+              <Text
+                variant="titleLarge"
+                style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
+                accessible={true}
+                accessibilityLabel="Recent Sales Title"
+                accessibilityRole="header"
+              >
                 Recent Sales
               </Text>
               <FlatList
@@ -312,109 +387,60 @@ const SalesScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   gradient: {
     flex: 1,
-    paddingHorizontal: '5%',
-  },
+    paddingHorizontal: 16, // theme.spacing.md
+  } as ViewStyle,
   scrollContainer: {
-    paddingTop: '10%',
-    paddingBottom: '15%',
-  },
-  title: {
-    color: '#fff',
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: '5%',
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 8,
-  },
+    paddingTop: 32, // theme.spacing.xl
+  } as ViewStyle,
   formContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    borderRadius: 16,
-    padding: '5%',
-    marginBottom: '5%',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
+    backgroundColor: 'rgba(40, 40, 40, 0.95)',
+    borderRadius: 8, // theme.borderRadius.medium
+    padding: 16, // theme.spacing.md
+    marginBottom: 16, // theme.spacing.md
+    elevation: 5, // Use raw value as theme.elevation is dynamic
+  } as ViewStyle,
   menuButton: {
-    marginBottom: '4%',
-    borderRadius: 10,
-    backgroundColor: '#fff',
-  },
+    marginBottom: 8, // theme.spacing.sm
+    borderRadius: 8, // theme.borderRadius.medium
+  } as ViewStyle,
   menuContent: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-  },
+    borderRadius: 8, // theme.borderRadius.medium
+  } as ViewStyle,
   menuItem: {
-    paddingHorizontal: '4%',
-  },
+    paddingHorizontal: 8, // theme.spacing.sm
+  } as ViewStyle,
   menuItemText: {
-    color: '#333',
-  },
+    fontWeight: 'normal',
+  } as TextStyle,
   input: {
-    marginBottom: '4%',
-    backgroundColor: '#fff',
-  },
+    marginBottom: 8, // theme.spacing.sm
+  } as ViewStyle,
   error: {
-    color: '#FF6F61',
-    marginBottom: '4%',
+    marginBottom: 8, // theme.spacing.sm
     textAlign: 'center',
-  },
+  } as TextStyle,
   buttonContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
+  } as ViewStyle,
   formButton: {
     flex: 1,
-    marginRight: '3%',
-    borderRadius: 10,
-    paddingVertical: '2%',
-  },
+    marginRight: 8, // theme.spacing.sm
+    borderRadius: 8, // theme.borderRadius.medium
+    paddingVertical: 4, // theme.spacing.xs
+  } as ViewStyle,
   fab: {
-    backgroundColor: '#FF6F61',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-  },
+    elevation: 5, // Use raw value as theme.elevation is dynamic
+  } as ViewStyle,
   recentSalesContainer: {
-    marginTop: '5%',
-  },
-  recentSalesTitle: {
-    color: '#fff',
-    fontWeight: '700',
-    marginBottom: '4%',
-  },
+    marginTop: 16, // theme.spacing.md
+  } as ViewStyle,
   recentSalesList: {
-    paddingBottom: '5%',
-  },
-  saleCard: {
-    marginBottom: '4%',
-    borderRadius: 16,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  cardTitle: {
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: '2%',
-  },
-  cardText: {
-    color: '#555',
-    marginVertical: '1%',
-  },
+    paddingBottom: 16, // theme.spacing.md
+  } as ViewStyle,
 });
 
 export default SalesScreen;

@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Switch, Alert, Modal, Animated, ScrollView } from 'react-native';
-import { Text, Card, Button, TextInput, FAB, useTheme, Avatar, Menu } from 'react-native-paper';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, StyleSheet, Switch, Alert, Modal, Animated, ActivityIndicator, ScrollView, ViewStyle } from 'react-native';
+import { Text, Button, TextInput, FAB, Avatar, Menu } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import db from '../database/db';
+import { Dimensions } from 'react-native';
+import { globalStyles } from '../theme';
+import { useAppTheme } from '../context/ThemeContext';
+import GradientCard from '../components/GradientCard';
 
 type Settings = {
   theme: 'light' | 'dark';
@@ -14,72 +17,134 @@ type Settings = {
   };
   currency: string;
   userName: string;
+  language: string;
+  lowStockThreshold: number;
+  backupFrequency: 'daily' | 'weekly' | 'monthly' | 'none';
 };
 
+const { width, height } = Dimensions.get('window');
+
 const SettingsScreen: React.FC = () => {
-  const theme = useTheme();
-  const [settings, setSettings] = useState<Settings>({
-    theme: 'dark',
-    notifications: { lowStock: true, dailySales: false },
-    currency: 'KES',
-    userName: 'User',
-  });
+  const { theme, setThemeType } = useAppTheme();
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
-  const cardAnims = useRef<Animated.Value[]>([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
+  const [currencyMenuVisible, setCurrencyMenuVisible] = useState(false);
+  const [languageMenuVisible, setLanguageMenuVisible] = useState(false);
+  const [backupMenuVisible, setBackupMenuVisible] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const cardAnims = useRef<Animated.Value[]>([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const modalAnim = useRef(new Animated.Value(0)).current;
 
-  const currencies = ['KES', 'USD', 'EUR', 'GBP'];
+  const currencies = ['KES', 'USD', 'EUR', 'GBP'] as const;
+  const languages = ['english', 'french', 'spanish'] as const;
+  const backupFrequencies: ('daily' | 'weekly' | 'monthly' | 'none')[] = ['daily', 'weekly', 'monthly', 'none'];
 
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const savedSettings = await AsyncStorage.getItem('settings');
-        if (savedSettings) {
-          setSettings(JSON.parse(savedSettings));
-        }
-      } catch (err) {
-        Alert.alert('Error', 'Failed to load settings');
+  const loadSettings = useCallback(async () => {
+    try {
+      const savedSettings = await AsyncStorage.getItem('settings');
+      const defaultSettings: Settings = {
+        theme: 'dark',
+        notifications: { lowStock: true, dailySales: false },
+        currency: 'KES',
+        userName: 'User',
+        language: 'english',
+        lowStockThreshold: 10,
+        backupFrequency: 'none',
+      };
+      if (savedSettings) {
+        const parsedSettings = JSON.parse(savedSettings);
+        const updatedSettings = { ...defaultSettings, ...parsedSettings };
+        setSettings(updatedSettings);
+        setNewUserName(parsedSettings.userName || 'User');
+        setThemeType(updatedSettings.theme);
+      } else {
+        setSettings(defaultSettings);
+        setNewUserName(defaultSettings.userName);
+        setThemeType(defaultSettings.theme);
       }
-    };
-    loadSettings();
-
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      ...cardAnims.map((anim, index) =>
-        Animated.timing(anim, {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
           toValue: 1,
           duration: 300,
-          delay: index * 100,
           useNativeDriver: true,
-        })
-      ),
-    ]).start();
-  }, []);
+        }),
+        ...cardAnims.map((anim, index) =>
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 300,
+            delay: index * 100,
+            useNativeDriver: true,
+          })
+        ),
+      ]).start();
+    } catch (err) {
+      Alert.alert('Error', 'Failed to load settings', [
+        { text: 'Retry', onPress: () => loadSettings() },
+        { text: 'Cancel' },
+      ]);
+    }
+  }, [cardAnims, fadeAnim, setThemeType]);
 
-  const saveSettings = async () => {
+  useEffect(() => {
+    loadSettings();
+    return () => {
+      cardAnims.forEach(anim => anim.stopAnimation());
+      fadeAnim.stopAnimation();
+      modalAnim.stopAnimation();
+    };
+  }, [loadSettings]);
+
+  useEffect(() => {
+    if (modalVisible) {
+      Animated.timing(modalAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(modalAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => modalAnim.setValue(0));
+    }
+  }, [modalVisible]);
+
+  const saveSettings = useCallback(async () => {
+    if (!settings) return;
     try {
       await AsyncStorage.setItem('settings', JSON.stringify(settings));
-      Alert.alert('Success', 'Settings saved');
     } catch (err) {
-      Alert.alert('Error', 'Failed to save settings');
+      Alert.alert('Error', 'Failed to save settings', [
+        { text: 'Retry', onPress: () => saveSettings() },
+        { text: 'Cancel' },
+      ]);
     }
-  };
+  }, [settings]);
 
-  const exportDatabase = async () => {
-    Alert.alert('Export', 'Database export would be implemented here (e.g., JSON file).');
-  };
+  useEffect(() => {
+    saveSettings();
+  }, [settings, saveSettings]);
 
-  const resetDatabase = () => {
+  const exportDatabase = useCallback(() => {
+    Alert.alert('Export', 'Database export is not yet implemented.');
+  }, []);
+
+  const backupDatabase = useCallback((type: string) => {
+    Alert.alert('Backup', `Database ${type} backup is not yet implemented.`);
+  }, []);
+
+  const resetDatabase = useCallback(() => {
     Alert.alert(
       'Reset Database',
       'This will delete all inventory and sales data. Are you sure?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Cancel' },
         {
           text: 'Reset',
           style: 'destructive',
@@ -89,236 +154,475 @@ const SettingsScreen: React.FC = () => {
               await db.runAsync('DELETE FROM sales');
               Alert.alert('Success', 'Database reset');
             } catch (err) {
-              Alert.alert('Error', 'Failed to reset database');
+              Alert.alert('Error', 'Failed to reset database', [
+                { text: 'Retry', onPress: () => resetDatabase() },
+                { text: 'Cancel' },
+              ]);
             }
           },
         },
       ]
     );
-  };
+  }, []);
 
-  const updateUserName = (name: string) => {
-    setSettings({ ...settings, userName: name });
-    setModalVisible(false);
-  };
+  const updateUserName = useCallback(() => {
+    if (!newUserName.trim()) {
+      Alert.alert('Error', 'Please enter a valid name');
+      return;
+    }
+    if (settings) {
+      setSettings({ ...settings, userName: newUserName.trim() });
+      setModalVisible(false);
+    }
+  }, [newUserName, settings]);
 
-  const renderCard = (index: number, content: React.ReactNode) => (
+  const toggleTheme = useCallback(() => {
+    if (!settings) return;
+    const newTheme = settings.theme === 'dark' ? 'light' : 'dark';
+    setSettings({ ...settings, theme: newTheme });
+    setThemeType(newTheme);
+  }, [settings, setThemeType]);
+
+  const renderCard = (index: number, title: string, content: React.ReactNode) => (
     <Animated.View
-      style={[
-        styles.card,
-        {
-          opacity: cardAnims[index],
-          transform: [
-            {
-              translateY: cardAnims[index].interpolate({
-                inputRange: [0, 1],
-                outputRange: [50, 0],
-              }),
-            },
-          ],
-        },
-      ]}
+      style={{
+        opacity: cardAnims[index],
+        transform: [{ translateY: cardAnims[index].interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+      }}
     >
-      <Card>
-        <Card.Content>{content}</Card.Content>
-      </Card>
+      <GradientCard accessibilityLabel={`${title} settings card`} accessibilityRole="region">
+        <Text
+          variant="titleLarge"
+          style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
+          accessible={true}
+          accessibilityLabel={title}
+          accessibilityRole="header"
+        >
+          {title}
+        </Text>
+        {content}
+      </GradientCard>
     </Animated.View>
   );
 
+  if (!settings) {
+    return (
+      <View style={[globalStyles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text
+          style={[globalStyles.cardText, { color: theme.colors.text, marginTop: 8 }]}
+          accessible={true}
+          accessibilityLabel="Loading settings"
+        >
+          Loading Settings...
+        </Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={['#1E1E1E', '#3A3A3A']} style={styles.gradient}>
+    <View style={[globalStyles.container, { backgroundColor: theme.colors.background }]}>
+      <LinearGradient
+        colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
+        style={styles.gradient}
+      >
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          <Text variant="displaySmall" style={styles.title}>
-            Settings
-          </Text>
           <ScrollView
-            contentContainerStyle={styles.scrollContainer}
-            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={true}
+            showsHorizontalScrollIndicator={false}
+            accessibilityLabel="Settings content"
+            accessibilityRole="scrollbar"
           >
-            {renderCard(
-              0,
-              <View>
-                <Text variant="titleLarge" style={styles.cardTitle}>
-                  User Profile
-                </Text>
+            <Text
+              variant="titleLarge"
+              style={[globalStyles.title, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
+              accessible={true}
+              accessibilityLabel="Settings Title"
+              accessibilityRole="header"
+            >
+              Settings
+            </Text>
+            <View style={[styles.sectionContainer, { marginBottom: 80 }]}>
+              {renderCard(0, 'User Profile', (
                 <View style={styles.profileContainer}>
-                  <Avatar.Text size={48} label={settings.userName[0]} style={styles.avatar} />
-                  <View style={styles.profileText}>
-                    <Text style={styles.cardText}>{settings.userName}</Text>
+                  {false ? (
+                    <Avatar.Image
+                      size={40}
+                      source={require('../../assets/user-profile.png')}
+                      style={[styles.avatar, { backgroundColor: theme.colors.primary }]}
+                      accessible={true}
+                      accessibilityLabel="User avatar"
+                    />
+                  ) : (
+                    <Avatar.Text
+                      size={40}
+                      label={settings.userName[0] || '?'}
+                      style={[styles.avatar, { backgroundColor: theme.colors.primary }]}
+                      accessible={true}
+                      accessibilityLabel="User avatar"
+                    />
+                  )}
+                  <View style={styles.profileTextContainer}>
+                    <Text
+                      style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                      accessible={true}
+                      accessibilityLabel={`User: ${settings.userName}`}
+                    >
+                      {settings.userName}
+                    </Text>
                     <Button
                       mode="text"
-                      onPress={() => setModalVisible(true)}
-                      textColor="#FF6F61"
+                      onPress={() => {
+                        setNewUserName(settings.userName);
+                        setModalVisible(true);
+                      }}
+                      textColor={theme.colors.accent}
+                      accessible={true}
+                      accessibilityLabel="Edit user name"
+                      accessibilityRole="button"
                     >
                       Edit Name
                     </Button>
                   </View>
                 </View>
+              ))}
+              {renderCard(1, 'Preferences', (
+                <>
+                  <View style={styles.settingsRow}>
+                    <Text
+                      style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                      accessible={true}
+                      accessibilityLabel="Dark theme"
+                    >
+                      Dark Theme
+                    </Text>
+                    <Switch
+                      value={settings.theme === 'dark'}
+                      onValueChange={toggleTheme}
+                      trackColor={{ true: theme.colors.primary, false: theme.colors.secondary }}
+                      thumbColor={theme.colors.text}
+                      accessible={true}
+                      accessibilityLabel="Toggle dark theme"
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: settings.theme === 'dark' }}
+                    />
+                  </View>
+                  <View style={styles.settingsRow}>
+                    <Text
+                      style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                      accessible={true}
+                      accessibilityLabel="Low stock alerts"
+                    >
+                      Low Stock Alerts
+                    </Text>
+                    <Switch
+                      value={settings.notifications.lowStock}
+                      onValueChange={() =>
+                        setSettings({
+                          ...settings,
+                          notifications: {
+                            ...settings.notifications,
+                            lowStock: !settings.notifications.lowStock,
+                          },
+                        })
+                      }
+                      trackColor={{ true: theme.colors.primary, false: theme.colors.secondary }}
+                      thumbColor={theme.colors.text}
+                      accessible={true}
+                      accessibilityLabel="Toggle low stock alerts"
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: settings.notifications.lowStock }}
+                    />
+                  </View>
+                  <View style={styles.settingsRow}>
+                    <Text
+                      style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                      accessible={true}
+                      accessibilityLabel="Daily sales summaries"
+                    >
+                      Daily Sales Summaries
+                    </Text>
+                    <Switch
+                      value={settings.notifications.dailySales}
+                      onValueChange={() =>
+                        setSettings({
+                          ...settings,
+                          notifications: {
+                            ...settings.notifications,
+                            dailySales: !settings.notifications.dailySales,
+                          },
+                        })
+                      }
+                      trackColor={{ true: theme.colors.primary, false: theme.colors.secondary }}
+                      thumbColor={theme.colors.text}
+                      accessible={true}
+                      accessibilityLabel="Toggle daily sales summaries"
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: settings.notifications.dailySales }}
+                    />
+                  </View>
+                  <View style={styles.settingsRow}>
+                    <Text
+                      style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                      accessible={true}
+                      accessibilityLabel="Low stock threshold"
+                    >
+                      Low Stock Threshold
+                    </Text>
+                    <TextInput
+                      value={settings.lowStockThreshold.toString()}
+                      onChangeText={(text) => {
+                        const value = parseInt(text);
+                        if (!isNaN(value) && value >= 0) {
+                          setSettings({ ...settings, lowStockThreshold: value });
+                        } else if (text.trim() === '') {
+                          setSettings({ ...settings, lowStockThreshold: 0 });
+                        }
+                      }}
+                      keyboardType="numeric"
+                      style={styles.input}
+                      mode="outlined"
+                      theme={{
+                        roundness: theme.borderRadius.medium,
+                        colors: {
+                          text: theme.colors.text,
+                          primary: theme.colors.primary,
+                          background: theme.colors.background === '#1A1A1A' ? '#2A2A2A' : '#E0E0E0',
+                          placeholder: theme.colors.secondary,
+                          outline: theme.colors.primary,
+                        },
+                      }}
+                      textColor={theme.colors.text}
+                      accessible={true}
+                      accessibilityLabel="Enter low stock threshold"
+                    />
+                  </View>
+                </>
+              ))}
+              <View style={styles.menuContainer}>
+                <Menu
+                  visible={currencyMenuVisible}
+                  onDismiss={() => setCurrencyMenuVisible(false)}
+                  anchor={
+                    <Button
+                      mode="contained"
+                      onPress={() => setCurrencyMenuVisible(true)}
+                      style={styles.menuButton}
+                      buttonColor={theme.colors.primary}
+                      textColor={theme.colors.text}
+                      accessible={true}
+                      accessibilityLabel="Select currency"
+                      accessibilityRole="button"
+                      uppercase={false}
+                    >
+                      {settings.currency || 'Select currency'}
+                    </Button>
+                  }
+                  contentStyle={[styles.menuContent, { backgroundColor: theme.colors.background }]}
+                >
+                  {currencies.map((currency) => (
+                    <Menu.Item
+                      key={currency}
+                      title={currency}
+                      onPress={() => {
+                        setSettings({ ...settings, currency });
+                        setCurrencyMenuVisible(false);
+                      }}
+                      accessibilityLabel={`Currency ${currency}`}
+                    />
+                  ))}
+                </Menu>
+                <Menu
+                  visible={languageMenuVisible}
+                  onDismiss={() => setLanguageMenuVisible(false)}
+                  anchor={
+                    <Button
+                      mode="contained"
+                      onPress={() => setLanguageMenuVisible(true)}
+                      style={styles.menuButton}
+                      buttonColor={theme.colors.primary}
+                      textColor={theme.colors.text}
+                      accessible={true}
+                      accessibilityLabel="Select language"
+                      accessibilityRole="button"
+                      uppercase={false}
+                    >
+                      {settings.language.charAt(0).toUpperCase() + settings.language.slice(1) || 'Select language'}
+                    </Button>
+                  }
+                  contentStyle={[styles.menuContent, { backgroundColor: theme.colors.background }]}
+                >
+                  {languages.map((lang) => (
+                    <Menu.Item
+                      key={lang}
+                      title={lang.charAt(0).toUpperCase() + lang.slice(1)}
+                      onPress={() => {
+                        setSettings({ ...settings, language: lang });
+                        setLanguageMenuVisible(false);
+                      }}
+                      accessibilityLabel={`Language ${lang}`}
+                    />
+                  ))}
+                </Menu>
+                <Menu
+                  visible={backupMenuVisible}
+                  onDismiss={() => setBackupMenuVisible(false)}
+                  anchor={
+                    <Button
+                      mode="contained"
+                      onPress={() => setBackupMenuVisible(true)}
+                      style={styles.menuButton}
+                      buttonColor={theme.colors.primary}
+                      textColor={theme.colors.text}
+                      accessible={true}
+                      accessibilityLabel="Select backup frequency"
+                      accessibilityRole="button"
+                      uppercase={false}
+                    >
+                      {settings.backupFrequency.charAt(0).toUpperCase() + settings.backupFrequency.slice(1) || 'Select backup frequency'}
+                    </Button>
+                  }
+                  contentStyle={[styles.menuContent, { backgroundColor: theme.colors.background }]}
+                >
+                  {backupFrequencies.map((frequency) => (
+                    <Menu.Item
+                      key={frequency}
+                      title={frequency.charAt(0).toUpperCase() + frequency.slice(1)}
+                      onPress={() => {
+                        setSettings({ ...settings, backupFrequency: frequency });
+                        setBackupMenuVisible(false);
+                      }}
+                      accessibilityLabel={`Backup frequency ${frequency}`}
+                    />
+                  ))}
+                </Menu>
               </View>
-            )}
-            {renderCard(
-              1,
-              <View>
-                <Text variant="titleLarge" style={styles.cardTitle}>
-                  Preferences
-                </Text>
-                <View style={styles.settingRow}>
-                  <Text style={styles.cardText}>Dark Theme</Text>
-                  <Switch
-                    value={settings.theme === 'dark'}
-                    onValueChange={() =>
-                      setSettings({
-                        ...settings,
-                        theme: settings.theme === 'dark' ? 'light' : 'dark',
-                      })
-                    }
-                    trackColor={{ true: '#FF6F61', false: '#E0E0E0' }}
-                    thumbColor="#fff"
-                  />
-                </View>
-                <View style={styles.settingRow}>
-                  <Text style={styles.cardText}>Low Stock Alerts</Text>
-                  <Switch
-                    value={settings.notifications.lowStock}
-                    onValueChange={() =>
-                      setSettings({
-                        ...settings,
-                        notifications: {
-                          ...settings.notifications,
-                          lowStock: !settings.notifications.lowStock,
-                        },
-                      })
-                    }
-                    trackColor={{ true: '#FF6F61', false: '#E0E0E0' }}
-                    thumbColor="#fff"
-                  />
-                </View>
-                <View style={styles.settingRow}>
-                  <Text style={styles.cardText}>Daily Sales Summary</Text>
-                  <Switch
-                    value={settings.notifications.dailySales}
-                    onValueChange={() =>
-                      setSettings({
-                        ...settings,
-                        notifications: {
-                          ...settings.notifications,
-                          dailySales: !settings.notifications.dailySales,
-                        },
-                      })
-                    }
-                    trackColor={{ true: '#FF6F61', false: '#E0E0E0' }}
-                    thumbColor="#fff"
-                  />
-                </View>
-                <View style={styles.settingRow}>
-                  <Text style={styles.cardText}>Currency</Text>
-                  <Menu
-                    visible={menuVisible}
-                    onDismiss={() => setMenuVisible(false)}
-                    anchor={
-                      <Button
-                        mode="outlined"
-                        onPress={() => setMenuVisible(true)}
-                        style={styles.currencyButton}
-                        textColor="#333"
-                      >
-                        {settings.currency}
-                      </Button>
-                    }
-                    contentStyle={styles.menuContent}
+              {renderCard(2, 'Advanced Settings', (
+                <>
+                  <Button
+                    mode="contained"
+                    onPress={() => backupDatabase('manual')}
+                    style={styles.button}
+                    buttonColor={theme.colors.primary}
+                    textColor={theme.colors.text}
+                    accessible={true}
+                    accessibilityLabel="Backup database"
+                    accessibilityRole="button"
                   >
-                    {currencies.map((currency) => (
-                      <Menu.Item
-                        key={currency}
-                        onPress={() => {
-                          setSettings({ ...settings, currency });
-                          setMenuVisible(false);
-                        }}
-                        title={currency}
-                        style={styles.menuItem}
-                        titleStyle={styles.menuItemText}
-                      />
-                    ))}
-                  </Menu>
-                </View>
-              </View>
-            )}
-            {renderCard(
-              2,
-              <View>
-                <Text variant="titleLarge" style={styles.cardTitle}>
-                  Data Management
-                </Text>
-                <Button
-                  mode="outlined"
-                  onPress={exportDatabase}
-                  style={styles.dataButton}
-                  textColor="#FF6F61"
-                  icon="export"
-                >
-                  Export Database
-                </Button>
-                <Button
-                  mode="outlined"
-                  onPress={resetDatabase}
-                  style={styles.dataButton}
-                  textColor="#FF6F61"
-                  icon="delete"
-                >
-                  Reset Database
-                </Button>
-              </View>
-            )}
+                    Backup Database
+                  </Button>
+                  <Button
+                    mode="contained"
+                    onPress={resetDatabase}
+                    style={styles.button}
+                    buttonColor={theme.colors.error}
+                    textColor={theme.colors.text}
+                    accessible={true}
+                    accessibilityLabel="Reset database"
+                    accessibilityRole="button"
+                  >
+                    Reset Database
+                  </Button>
+                  <Button
+                    mode="contained"
+                    onPress={exportDatabase}
+                    style={styles.button}
+                    buttonColor={theme.colors.accent}
+                    textColor={theme.colors.text}
+                    accessible={true}
+                    accessibilityLabel="Export database"
+                    accessibilityRole="button"
+                  >
+                    Export Database
+                  </Button>
+                </>
+              ))}
+            </View>
           </ScrollView>
           <FAB
-            style={styles.fab}
+            style={[styles.fab, { backgroundColor: theme.colors.primary }]}
             icon="content-save"
             onPress={saveSettings}
-            color="#fff"
+            color={theme.colors.accent}
+            customSize={56}
+            accessible={true}
+            accessibilityLabel="Save settings"
+            accessibilityRole="button"
           />
           <Modal
-            animationType="fade"
-            transparent
+            animationType="slide"
+            transparent={true}
             visible={modalVisible}
             onRequestClose={() => setModalVisible(false)}
           >
-            <View style={styles.modalOverlay}>
+            <Animated.View
+              style={[
+                styles.modalContainer,
+                {
+                  opacity: modalAnim,
+                  transform: [{ scale: modalAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }],
+                },
+              ]}
+            >
               <LinearGradient
-                colors={['#FFFFFF', '#F5F5F5']}
-                style={styles.modalContent}
+                colors={[theme.colors.background, theme.colors.gradientEnd]}
+                style={[styles.modal, { maxWidth: width * 0.9 }]}
               >
-                <Text variant="titleLarge" style={styles.modalTitle}>
+                <Text
+                  style={[globalStyles.cardTitle, { color: theme.colors.text, textAlign: 'center' }]}
+                  accessible={true}
+                  accessibilityLabel="Edit user name"
+                  accessibilityRole="header"
+                >
                   Edit User Name
                 </Text>
                 <TextInput
-                  label="Name"
-                  value={settings.userName}
-                  onChangeText={(text) => setSettings({ ...settings, userName: text })}
+                  value={newUserName}
+                  onChangeText={setNewUserName}
                   style={styles.input}
                   mode="outlined"
-                  theme={{ roundness: 10 }}
+                  label="New name"
+                  theme={{
+                    roundness: theme.borderRadius.medium,
+                    colors: {
+                      text: theme.colors.text,
+                      primary: theme.colors.primary,
+                      background: theme.colors.background === '#1A1A1A' ? '#2A2A2A' : '#E0E0E0',
+                      placeholder: theme.colors.secondary,
+                      outline: theme.colors.primary,
+                    },
+                  }}
+                  textColor={theme.colors.text}
+                  accessible={true}
+                  accessibilityLabel="Enter new user name"
                 />
-                <View style={styles.modalButtons}>
+                <View style={styles.modalButtonContainer}>
                   <Button
-                    mode="outlined"
+                    mode="text"
                     onPress={() => setModalVisible(false)}
-                    style={styles.modalButton}
-                    textColor="#FF6F61"
+                    textColor={theme.colors.error}
+                    accessible={true}
+                    accessibilityLabel="Cancel"
+                    accessibilityRole="button"
                   >
                     Cancel
                   </Button>
                   <Button
                     mode="contained"
-                    onPress={() => updateUserName(settings.userName)}
+                    onPress={updateUserName}
                     style={styles.modalButton}
-                    buttonColor="#FF6F61"
+                    buttonColor={theme.colors.primary}
+                    textColor={theme.colors.text}
+                    accessible={true}
+                    accessibilityLabel="Save new name"
+                    accessibilityRole="button"
                   >
                     Save
                   </Button>
                 </View>
               </LinearGradient>
-            </View>
+            </Animated.View>
           </Modal>
         </Animated.View>
       </LinearGradient>
@@ -327,132 +631,106 @@ const SettingsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  centered: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   gradient: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16, // theme.spacing.md
+    paddingTop: 32, // theme.spacing.xl
   },
   content: {
     flex: 1,
   },
-  scrollContainer: {
-    paddingTop: 40,
-    paddingBottom: 100, // Adjusted for BottomTabNavigator height
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 16, // theme.spacing.md
   },
   title: {
-    color: '#fff',
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 20,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 8,
+    fontSize: 24, // theme.typography.title.fontSize
+    fontWeight: 'bold',
+    marginBottom: 16, // theme.spacing.md
+  },
+  sectionContainer: {
+    flexGrow: 1,
+    marginBottom: 80, // Space for navigation bar
   },
   card: {
-    marginBottom: 15,
-    borderRadius: 16,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    marginBottom: 16, // theme.spacing.md
   },
   cardTitle: {
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 8,
-  },
-  cardText: {
-    fontSize: 16,
-    color: '#555',
-    marginVertical: 4,
+    fontSize: 20, // theme.typography.title.fontSize
+    fontWeight: 'bold',
+    marginBottom: 8, // theme.spacing.sm
   },
   profileContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8, // theme.spacing.sm
   },
   avatar: {
-    backgroundColor: '#FF6F61',
-    marginRight: 15,
+    marginRight: 16, // theme.spacing.md
   },
-  profileText: {
+  profileTextContainer: {
     flex: 1,
   },
-  settingRow: {
+  settingsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 8,
-  },
-  currencyButton: {
-    borderRadius: 10,
-    backgroundColor: '#fff',
-  },
-  menuContent: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-  },
-  menuItem: {
-    paddingHorizontal: 15,
-  },
-  menuItemText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  dataButton: {
-    marginVertical: 8,
-    borderRadius: 10,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    backgroundColor: '#FF6F61',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxWidth: 400,
-    padding: 20,
-    borderRadius: 16,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  modalTitle: {
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 20,
-    textAlign: 'center',
+    marginVertical: 8, // theme.spacing.sm
   },
   input: {
-    marginBottom: 15,
-    backgroundColor: '#fff',
+    width: 80,
+    marginLeft: 16, // theme.spacing.md
   },
-  modalButtons: {
+  menuContainer: {
+    marginVertical: 16, // theme.spacing.md
+  },
+  menuButton: {
+    marginVertical: 8, // theme.spacing.sm
+    borderRadius: 8, // theme.borderRadius.medium
+  },
+  menuContent: {
+    borderRadius: 8, // theme.borderRadius.medium
+  },
+  button: {
+    marginVertical: 8, // theme.spacing.sm
+    borderRadius: 8, // theme.borderRadius.medium
+  },
+ fab: {
+    position: 'absolute',
+    bottom: height * 0.04,
+    right: 17, // theme.spacing.md
+    elevation: 5, // theme.elevation
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modal: {
+    width: '80%',
+    padding: 16, // theme.spacing.md
+    borderRadius: 8, // theme.borderRadius.medium
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20, // theme.typography.title.fontSize
+    fontWeight: 'bold',
+    marginBottom: 16, // theme.spacing.md
+    textAlign: 'center',
+  },
+  modalButtonContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
+    justifyContent: 'flex-end',
+    marginTop: 16, // theme.spacing.md
   },
   modalButton: {
-    flex: 1,
-    marginHorizontal: 5,
-    paddingVertical: 5,
+    marginLeft: 8, // theme.spacing.sm
   },
 });
 

@@ -12,6 +12,7 @@ import ReportsScreen from './src/screens/ReportsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { initDB } from './src/database/db';
 import { enableScreens } from 'react-native-screens';
+import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
 
 enableScreens();
 
@@ -27,11 +28,12 @@ const Tab = createBottomTabNavigator<RootStackParamList>();
 
 SplashScreen.preventAutoHideAsync();
 
-export default function App() {
+function AppContent() {
   const [appIsReady, setAppIsReady] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
   const scaleAnim = useState(new Animated.Value(0.8))[0];
   const { width, height } = Dimensions.get('window');
+  const { theme } = useAppTheme();
 
   useEffect(() => {
     async function prepare() {
@@ -71,11 +73,15 @@ export default function App() {
         });
       });
     }
+    return () => {
+      fadeAnim.stopAnimation();
+      scaleAnim.stopAnimation();
+    };
   }, [appIsReady, fadeAnim, scaleAnim]);
 
   if (!appIsReady) {
     return (
-      <View style={styles.splashContainer}>
+      <View style={[styles.splashContainer, { backgroundColor: theme.colors.background }]}>
         <Animated.View style={[
           styles.logoContainer,
           {
@@ -139,8 +145,8 @@ export default function App() {
               marginBottom: 8,
               letterSpacing: 0.5,
             },
-            tabBarActiveTintColor: '#FF6F61',
-            tabBarInactiveTintColor: '#B0B0B0',
+            tabBarActiveTintColor: theme.colors.primary,
+            tabBarInactiveTintColor: theme.colors.secondary,
             tabBarStyle: {
               backgroundColor: 'rgba(255, 255, 255, 0.95)',
               borderTopWidth: 0,
@@ -150,11 +156,11 @@ export default function App() {
               paddingTop: 10,
               paddingBottom: height * 0.015,
               paddingHorizontal: 12,
-              shadowColor: '#000',
+              shadowColor: theme.colors.text,
               shadowOffset: { width: 0, height: -2 },
               shadowOpacity: 0.15,
               shadowRadius: 8,
-              elevation: 10,
+              elevation: theme.elevation,
               position: 'absolute',
             },
             tabBarItemStyle: {
@@ -177,12 +183,19 @@ export default function App() {
   );
 }
 
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
 const styles = StyleSheet.create({
   splashContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FF6F61',
   },
   logoContainer: {
     justifyContent: 'center',

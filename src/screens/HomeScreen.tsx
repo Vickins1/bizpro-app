@@ -11,14 +11,16 @@ import {
   TextStyle,
   ImageStyle,
 } from 'react-native';
-import { Card, Text, useTheme, Chip } from 'react-native-paper';
+import { Card, Text, Chip } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import db from '../database/db';
-import { theme, globalStyles } from '../theme';
+import { globalStyles } from '../theme';
 import GradientCard from '../components/GradientCard';
 import { RootStackParamList } from '../../App';
+import { useAppTheme } from '../context/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -34,6 +36,11 @@ type SalesSummary = {
   totalRevenue: number;
 };
 
+type Settings = {
+  currency: string;
+  lowStockThreshold: number;
+};
+
 const { width, height } = Dimensions.get('window');
 const IMAGES = [
   require('../../assets/bg1.jpg'),
@@ -42,16 +49,26 @@ const IMAGES = [
 ];
 
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
-  const paperTheme = useTheme();
+  const { theme } = useAppTheme();
   const [currentImage, setCurrentImage] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const titleAnim = useRef(new Animated.Value(0)).current;
   const [salesSummary, setSalesSummary] = useState<SalesSummary>({ totalSales: 0, totalRevenue: 0 });
   const [lowStockItems, setLowStockItems] = useState<InventoryItem[]>([]);
+  const [settings, setSettings] = useState<Settings>({ currency: 'KES', lowStockThreshold: 5 });
 
   useEffect(() => {
-    const fetchData = async () => {
+    const loadSettingsAndData = async () => {
       try {
+        // Load settings
+        const savedSettings = await AsyncStorage.getItem('settings');
+        const defaultSettings: Settings = { currency: 'KES', lowStockThreshold: 5 };
+        if (savedSettings) {
+          const parsedSettings = JSON.parse(savedSettings);
+          setSettings({ ...defaultSettings, ...parsedSettings });
+        }
+
+        // Fetch sales summary
         const summaryResult = await db.getFirstAsync<SalesSummary>(
           `SELECT 
              COUNT(*) as totalSales,
@@ -64,19 +81,21 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           totalRevenue: summaryResult?.totalRevenue ?? 0,
         });
 
+        // Fetch low stock items using dynamic threshold
         const lowStockResult = await db.getAllAsync<InventoryItem>(
-          `SELECT * FROM inventory WHERE quantity <= 5 ORDER BY quantity ASC`
+          `SELECT * FROM inventory WHERE quantity <= ? ORDER BY quantity ASC`,
+          [settings.lowStockThreshold ?? 5]
         );
         setLowStockItems(lowStockResult ?? []);
       } catch (err) {
         Alert.alert('Error', 'Failed to load data. Please try again.', [
-          { text: 'Retry', onPress: () => fetchData() },
+          { text: 'Retry', onPress: () => loadSettingsAndData() },
           { text: 'Cancel', style: 'cancel' },
         ]);
       }
     };
 
-    fetchData();
+    loadSettingsAndData();
 
     const interval = setInterval(() => {
       const nextImage = (currentImage + 1) % IMAGES.length;
@@ -99,15 +118,19 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       useNativeDriver: true,
     }).start();
 
-    return () => clearInterval(interval);
-  }, [currentImage, slideAnim]);
+    return () => {
+      clearInterval(interval);
+      slideAnim.stopAnimation();
+      titleAnim.stopAnimation();
+    };
+  }, [currentImage, slideAnim, titleAnim, settings.lowStockThreshold]);
 
   const navigateTo = (screen: keyof RootStackParamList) => {
     navigation.navigate(screen);
   };
 
   return (
-    <View style={globalStyles.container}>
+    <View style={[globalStyles.container, { backgroundColor: theme.colors.background }]}>
       <Animated.View style={[styles.imageContainer, { transform: [{ translateX: slideAnim }] }]}>
         {IMAGES.map((image, index) => (
           <ImageBackground
@@ -148,15 +171,18 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           >
             <Text
               variant="displaySmall"
-              style={[globalStyles.title, { fontSize: theme.typography.display.fontSize }]}
+              style={[globalStyles.title, { fontSize: theme.typography.display.fontSize, color: theme.colors.text }]}
               accessible={true}
               accessibilityLabel="BizPro App Title"
+              accessibilityRole="header"
             >
               BizPro
             </Text>
             <Text
               variant="titleMedium"
-              style={[styles.subtitle, { fontSize: theme.typography.body.fontSize }]}
+              style={[styles.subtitle, { fontSize: theme.typography.body.fontSize, color: theme.colors.accent }]}
+              accessible={true}
+              accessibilityLabel="Empower Your Business"
             >
               Empower Your Business
             </Text>
@@ -166,19 +192,48 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               <MaterialCommunityIcons
                 name="chart-line"
                 size={theme.typography.title.fontSize}
-                color={paperTheme.colors.primary}
+                color={theme.colors.primary}
               />
-              <Text variant="titleLarge" style={globalStyles.cardTitle}>
+              <Text
+                variant="titleLarge"
+                style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
+                accessible={true}
+                accessibilityLabel="Today's Insights"
+              >
                 Today's Insights
               </Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={globalStyles.cardText}>Total Sales</Text>
-              <Text style={globalStyles.cardText}>{salesSummary.totalSales}</Text>
+              <Text
+                style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                accessible={true}
+                accessibilityLabel={`Total Sales: ${salesSummary.totalSales}`}
+              >
+                Total Sales
+              </Text>
+              <Text
+                style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                accessible={true}
+                accessibilityLabel={`Total Sales Value: ${salesSummary.totalSales}`}
+              >
+                {salesSummary.totalSales}
+              </Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={globalStyles.cardText}>Revenue</Text>
-              <Text style={globalStyles.cardText}>KES {salesSummary.totalRevenue.toFixed(2)}</Text>
+              <Text
+                style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                accessible={true}
+                accessibilityLabel={`Revenue: ${settings.currency} ${salesSummary.totalRevenue.toFixed(2)}`}
+              >
+                Revenue
+              </Text>
+              <Text
+                style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+                accessible={true}
+                accessibilityLabel={`Revenue Value: ${settings.currency} ${salesSummary.totalRevenue.toFixed(2)}`}
+              >
+                {settings.currency} {salesSummary.totalRevenue.toFixed(2)}
+              </Text>
             </View>
           </GradientCard>
           {lowStockItems.length > 0 && (
@@ -189,7 +244,12 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                   size={theme.typography.title.fontSize}
                   color={theme.colors.error}
                 />
-                <Text variant="titleLarge" style={globalStyles.cardTitle}>
+                <Text
+                  variant="titleLarge"
+                  style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
+                  accessible={true}
+                  accessibilityLabel="Low Stock Alerts"
+                >
                   Low Stock Alerts
                 </Text>
               </View>
@@ -197,8 +257,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                 {lowStockItems.map((item) => (
                   <Chip
                     key={item.id}
-                    style={styles.chip}
-                    textStyle={[styles.chipText, { fontSize: theme.typography.caption.fontSize }]}
+                    style={[styles.chip, { backgroundColor: theme.colors.primary }]}
+                    textStyle={[styles.chipText, { fontSize: theme.typography.caption.fontSize, color: theme.colors.accent }]}
                     onPress={() => navigateTo('Inventory')}
                     icon={() => (
                       <MaterialCommunityIcons
@@ -209,6 +269,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                     )}
                     accessible={true}
                     accessibilityLabel={`Low stock item: ${item.name}, quantity ${item.quantity}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: false }}
                   >
                     {item.name}: {item.quantity}
                   </Chip>
@@ -216,8 +278,12 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             </GradientCard>
           )}
-          <View style={styles.footer}>
-            <Text style={[styles.footerText, { fontSize: theme.typography.caption.fontSize }]}>
+          <View style={[styles.footer, { backgroundColor: 'rgba(255, 255, 255, 0.1)', elevation: theme.elevation }]}>
+            <Text
+              style={[styles.footerText, { fontSize: theme.typography.caption.fontSize, color: theme.colors.accent }]}
+              accessible={true}
+              accessibilityLabel="Powered by Vickins Technologies"
+            >
               Powered by Vickins Technologies
             </Text>
           </View>
@@ -246,62 +312,56 @@ const styles = StyleSheet.create({
     flex: 1,
   } as ViewStyle,
   scrollContainer: {
-    padding: theme.spacing.md,
+    padding: 16, // Use raw value as theme.spacing is now dynamic
     minHeight: height,
   } as ViewStyle,
   header: {
     alignItems: 'center',
-    marginTop: theme.spacing.xl,
-    marginBottom: theme.spacing.lg,
+    marginTop: 32, // Use raw value as theme.spacing is dynamic
+    marginBottom: 24,
   } as ViewStyle,
   subtitle: {
-    color: theme.colors.accent,
-    marginTop: theme.spacing.sm,
-    fontWeight: theme.typography.body.fontWeight,
+    marginTop: 8,
+    fontWeight: 'normal',
     fontStyle: 'italic',
     letterSpacing: 0.5,
   } as TextStyle,
   summaryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: theme.spacing.sm,
+    marginBottom: 8,
   } as ViewStyle,
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginVertical: theme.spacing.xs,
+    marginVertical: 4,
   } as ViewStyle,
   chipContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: theme.spacing.sm,
+    marginTop: 8,
   } as ViewStyle,
   chip: {
-    marginRight: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.medium,
-    padding: theme.spacing.xs,
+    marginRight: 8,
+    marginBottom: 8,
+    borderRadius: 8,
+    padding: 4,
   } as ViewStyle,
   chipText: {
-    color: theme.colors.accent,
-    fontWeight: theme.typography.caption.fontWeight,
+    fontWeight: 'normal',
   } as TextStyle,
   footer: {
-    marginTop: theme.spacing.xl,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: theme.borderRadius.medium,
+    marginTop: 32,
+    paddingVertical: 8,
+    borderRadius: 8,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
-    elevation: 5,
   } as ViewStyle,
   footerText: {
-    color: theme.colors.accent,
-    fontWeight: theme.typography.caption.fontWeight,
+    fontWeight: 'normal',
     letterSpacing: 0.5,
   } as TextStyle,
 });

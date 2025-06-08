@@ -9,14 +9,15 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
-import { Button, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, Text, TextInput } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import db from '../database/db';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Dimensions } from 'react-native';
-import { theme, globalStyles } from '../theme';
+import { globalStyles } from '../theme';
 import GradientCard from '../components/GradientCard';
+import { useAppTheme } from '../context/ThemeContext';
 
 type InventoryItem = {
   id: number;
@@ -25,10 +26,14 @@ type InventoryItem = {
   price: number;
 };
 
+type Settings = {
+  currency: string;
+};
+
 const { width, height } = Dimensions.get('window');
 
 const InventoryScreen: React.FC = () => {
-  const paperTheme = useTheme();
+  const { theme } = useAppTheme();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -55,7 +60,12 @@ const InventoryScreen: React.FC = () => {
       }
     };
     loadSettings();
-  }, []);
+
+    return () => {
+      cardAnims.forEach(anim => anim.stopAnimation());
+      modalAnim.stopAnimation();
+    };
+  }, [cardAnims, modalAnim]);
 
   const loadItems = useCallback(async () => {
     try {
@@ -80,20 +90,20 @@ const InventoryScreen: React.FC = () => {
   }, []);
 
   const addItem = useCallback(async () => {
-    if (!name || !quantity || !price) {
+    if (!name.trim() || !quantity.trim() || !price.trim()) {
       setError('All fields are required');
       return;
     }
     const qty = parseInt(quantity);
     const pr = parseFloat(price);
     if (isNaN(qty) || qty < 0 || isNaN(pr) || pr <= 0) {
-      setError('Invalid quantity or price');
+      setError('Quantity must be non-negative and price must be positive');
       return;
     }
     try {
       await db.runAsync(
         'INSERT INTO inventory (name, quantity, price) VALUES (?, ?, ?)',
-        name,
+        name.trim(),
         qty,
         pr
       );
@@ -143,11 +153,19 @@ const InventoryScreen: React.FC = () => {
   }, [loadItems]);
 
   useEffect(() => {
-    Animated.timing(modalAnim, {
-      toValue: modalVisible ? 1 : 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    if (modalVisible) {
+      Animated.timing(modalAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(modalAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => modalAnim.setValue(0));
+    }
   }, [modalVisible, modalAnim]);
 
   const renderItem = ({ item, index }: { item: InventoryItem; index: number }) => (
@@ -157,16 +175,25 @@ const InventoryScreen: React.FC = () => {
           <View style={styles.cardTextContainer}>
             <Text
               variant="titleMedium"
-              style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize }]}
+              style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
               accessible={true}
               accessibilityLabel={`Item: ${item.name}`}
+              accessibilityRole="text"
             >
               {item.name}
             </Text>
-            <Text style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize }]}>
+            <Text
+              style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+              accessible={true}
+              accessibilityLabel={`Quantity: ${item.quantity}`}
+            >
               Quantity: {item.quantity}
             </Text>
-            <Text style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize }]}>
+            <Text
+              style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text }]}
+              accessible={true}
+              accessibilityLabel={`Price: ${currency} ${item.price.toFixed(2)}`}
+            >
               Price: {currency} {item.price.toFixed(2)}
             </Text>
           </View>
@@ -176,6 +203,7 @@ const InventoryScreen: React.FC = () => {
             style={styles.deleteButton}
             accessible={true}
             accessibilityLabel={`Delete ${item.name}`}
+            accessibilityRole="button"
           >
             <MaterialCommunityIcons
               name="trash-can-outline"
@@ -189,16 +217,17 @@ const InventoryScreen: React.FC = () => {
   );
 
   return (
-    <View style={globalStyles.container}>
+    <View style={[globalStyles.container, { backgroundColor: theme.colors.background }]}>
       <LinearGradient
         colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
         style={styles.gradient}
       >
         <Text
           variant="displaySmall"
-          style={[globalStyles.title, { fontSize: theme.typography.display.fontSize }]}
+          style={[globalStyles.title, { fontSize: theme.typography.display.fontSize, color: theme.colors.text }]}
           accessible={true}
           accessibilityLabel="Inventory Management Title"
+          accessibilityRole="header"
         >
           Inventory Management
         </Text>
@@ -207,7 +236,11 @@ const InventoryScreen: React.FC = () => {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           ListEmptyComponent={
-            <Text style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, textAlign: 'center' }]}>
+            <Text
+              style={[globalStyles.cardText, { fontSize: theme.typography.body.fontSize, color: theme.colors.text, textAlign: 'center' }]}
+              accessible={true}
+              accessibilityLabel="No items in inventory"
+            >
               No items in inventory
             </Text>
           }
@@ -222,6 +255,7 @@ const InventoryScreen: React.FC = () => {
           textColor={theme.colors.accent}
           accessible={true}
           accessibilityLabel="Add new inventory item"
+          accessibilityRole="button"
         >
           Add New Item
         </Button>
@@ -248,12 +282,15 @@ const InventoryScreen: React.FC = () => {
             ]}
           >
             <LinearGradient
-              colors={[theme.colors.background, '#F5F5F5']}
+              colors={[theme.colors.background, theme.colors.gradientEnd]}
               style={[styles.modalContent, { maxWidth: width * 0.9 }]}
             >
               <Text
                 variant="titleLarge"
-                style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, textAlign: 'center' }]}
+                style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text, textAlign: 'center' }]}
+                accessible={true}
+                accessibilityLabel="Add New Item"
+                accessibilityRole="header"
               >
                 Add New Item
               </Text>
@@ -263,9 +300,20 @@ const InventoryScreen: React.FC = () => {
                 onChangeText={setName}
                 style={styles.input}
                 mode="outlined"
-                theme={{ roundness: theme.borderRadius.medium }}
+                theme={{
+                  roundness: theme.borderRadius.medium,
+                  colors: {
+                    text: theme.colors.text,
+                    primary: theme.colors.primary,
+                    background: theme.colors.background === '#1A1A1A' ? '#2A2A2A' : '#E0E0E0',
+                    placeholder: theme.colors.secondary,
+                    outline: theme.colors.primary,
+                  },
+                }}
+                textColor={theme.colors.text}
                 accessible={true}
                 accessibilityLabel="Item name input"
+                accessibilityRole="text"
               />
               <TextInput
                 label="Quantity"
@@ -274,9 +322,20 @@ const InventoryScreen: React.FC = () => {
                 keyboardType="numeric"
                 style={styles.input}
                 mode="outlined"
-                theme={{ roundness: theme.borderRadius.medium }}
+                theme={{
+                  roundness: theme.borderRadius.medium,
+                  colors: {
+                    text: theme.colors.text,
+                    primary: theme.colors.primary,
+                    background: theme.colors.background === '#1A1A1A' ? '#2A2A2A' : '#E0E0E0',
+                    placeholder: theme.colors.secondary,
+                    outline: theme.colors.primary,
+                  },
+                }}
+                textColor={theme.colors.text}
                 accessible={true}
                 accessibilityLabel="Quantity input"
+                accessibilityRole="text"
               />
               <TextInput
                 label={`Price (${currency})`}
@@ -285,12 +344,27 @@ const InventoryScreen: React.FC = () => {
                 keyboardType="numeric"
                 style={styles.input}
                 mode="outlined"
-                theme={{ roundness: theme.borderRadius.medium }}
+                theme={{
+                  roundness: theme.borderRadius.medium,
+                  colors: {
+                    text: theme.colors.text,
+                    primary: theme.colors.primary,
+                    background: theme.colors.background === '#1A1A1A' ? '#2A2A2A' : '#E0E0E0',
+                    placeholder: theme.colors.secondary,
+                    outline: theme.colors.primary,
+                  },
+                }}
+                textColor={theme.colors.text}
                 accessible={true}
                 accessibilityLabel={`Price input in ${currency}`}
+                accessibilityRole="text"
               />
               {error ? (
-                <Text style={[styles.error, { fontSize: theme.typography.caption.fontSize }]}>
+                <Text
+                  style={[styles.error, { fontSize: theme.typography.caption.fontSize, color: theme.colors.error }]}
+                  accessible={true}
+                  accessibilityLabel={`Error: ${error}`}
+                >
                   {error}
                 </Text>
               ) : null}
@@ -302,6 +376,7 @@ const InventoryScreen: React.FC = () => {
                   textColor={theme.colors.error}
                   accessible={true}
                   accessibilityLabel="Cancel adding item"
+                  accessibilityRole="button"
                 >
                   Cancel
                 </Button>
@@ -310,8 +385,10 @@ const InventoryScreen: React.FC = () => {
                   onPress={addItem}
                   style={styles.modalButton}
                   buttonColor={theme.colors.primary}
+                  textColor={theme.colors.accent}
                   accessible={true}
                   accessibilityLabel="Add item to inventory"
+                  accessibilityRole="button"
                 >
                   Add Item
                 </Button>
@@ -327,51 +404,49 @@ const InventoryScreen: React.FC = () => {
 const styles = StyleSheet.create({
   gradient: {
     flex: 1,
-    paddingTop: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.md,
+    paddingTop: 32, // Use raw value as theme.spacing is dynamic
+    paddingHorizontal: 16,
   } as ViewStyle,
   listContainer: {
-    paddingBottom: theme.spacing.xl,
+    paddingBottom: 24,
   } as ViewStyle,
   cardContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: theme.spacing.sm,
+    padding: 8,
   } as ViewStyle,
   cardTextContainer: {
     flex: 1,
   } as ViewStyle,
   deleteButton: {
-    marginLeft: theme.spacing.sm,
+    marginLeft: 8,
   } as ViewStyle,
   addButton: {
-    marginVertical: theme.spacing.md,
-    marginHorizontal: theme.spacing.md,
-    marginBottom: height * 0.15, // Increased bottom margin for navigation bar
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.medium,
+    marginVertical: 16,
+    marginHorizontal: 16,
+    marginBottom: height * 0.15, // For navigation bar clearance
+    paddingVertical: 4,
+    borderRadius: 8,
   } as ViewStyle,
   modalOverlay: {
     flex: 1,
-    backgroundColor: theme.colors.modalOverlay,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Use raw value as theme.colors is dynamic
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.md,
+    padding: 16,
   } as ViewStyle,
   modalContent: {
     width: '100%',
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.medium,
-    ...theme.shadow,
+    padding: 16,
+    borderRadius: 8,
+    elevation: 5, // Use raw elevation as theme.elevation is dynamic
   } as ViewStyle,
   input: {
-    marginBottom: theme.spacing.sm,
-    backgroundColor: theme.colors.background,
+    marginBottom: 8,
   } as ViewStyle,
   error: {
-    color: theme.colors.error,
-    marginBottom: theme.spacing.sm,
+    marginBottom: 8,
     textAlign: 'center',
   } as TextStyle,
   modalButtons: {
@@ -380,8 +455,8 @@ const styles = StyleSheet.create({
   } as ViewStyle,
   modalButton: {
     flex: 1,
-    marginHorizontal: theme.spacing.xs,
-    paddingVertical: theme.spacing.xs,
+    marginHorizontal: 4,
+    paddingVertical: 4,
   } as ViewStyle,
 });
 

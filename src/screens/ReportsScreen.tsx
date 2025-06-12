@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, StyleSheet, FlatList, Alert, Modal, Animated, ViewStyle, TextStyle } from 'react-native';
+import { View, StyleSheet, FlatList, Alert, Modal, Animated } from 'react-native';
 import { Text, SegmentedButtons, Card, FAB, Button, TextInput } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import db from '../database/db';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Dimensions } from 'react-native';
 import { globalStyles } from '../theme';
 import { useAppTheme } from '../context/ThemeContext';
+import db from '../database/db';
 
 type SaleReport = {
   itemId: number;
@@ -25,7 +25,7 @@ type Settings = {
   currency: string;
 };
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 const ReportsScreen: React.FC = () => {
   const { theme } = useAppTheme();
@@ -64,12 +64,14 @@ const ReportsScreen: React.FC = () => {
       summaryAnim.stopAnimation();
       modalAnim.stopAnimation();
     };
-  }, [cardAnims]);
+  }, []); // Removed cardAnims from dependencies
 
   const fetchReports = useCallback(
     async (selectedPeriod: 'daily' | 'weekly' | 'monthly' | 'custom', start?: string, end?: string) => {
       try {
         let dateFilter = '';
+        let params: (string | number)[] = [];
+
         if (selectedPeriod === 'daily') {
           dateFilter = `date >= date('now', 'start of day')`;
         } else if (selectedPeriod === 'weekly') {
@@ -77,11 +79,11 @@ const ReportsScreen: React.FC = () => {
         } else if (selectedPeriod === 'monthly') {
           dateFilter = `date >= date('now', 'start of month')`;
         } else if (selectedPeriod === 'custom' && start && end) {
-          dateFilter = `date BETWEEN '${start}' AND '${end}'`;
+          dateFilter = `date BETWEEN ? AND ?`;
+          params = [start, end];
         }
 
-        const result = await db.getAllAsync<SaleReport>(
-          `
+        const reportQuery = `
           SELECT 
             s.itemId,
             i.name as itemName,
@@ -92,17 +94,19 @@ const ReportsScreen: React.FC = () => {
           WHERE s.${dateFilter}
           GROUP BY s.itemId, i.name
           ORDER BY totalAmount DESC
-          `
-        );
-
-        const summaryResult = await db.getFirstAsync<{ totalSales: number; totalRevenue: number }>(
-          `
+        `;
+        const summaryQuery = `
           SELECT 
             COUNT(*) as totalSales,
             SUM(amount) as totalRevenue
           FROM sales
           WHERE ${dateFilter}
-          `
+        `;
+
+        const result = await db.getAllAsync<SaleReport>(reportQuery, params);
+        const summaryResult = await db.getFirstAsync<{ totalSales: number; totalRevenue: number }>(
+          summaryQuery,
+          params
         );
 
         setReports(result ?? []);
@@ -194,7 +198,7 @@ const ReportsScreen: React.FC = () => {
   const renderReport = ({ item, index }: { item: SaleReport; index: number }) => (
     <Animated.View
       style={[
-        styles.card,
+        styles(theme).card,
         {
           opacity: cardAnims[index] || 1,
           transform: [
@@ -208,10 +212,10 @@ const ReportsScreen: React.FC = () => {
         },
       ]}
     >
-      <Card style={styles.cardContainer}>
+      <Card style={styles(theme).cardContainer} accessibilityRole="summary" accessibilityLabel={`Report: ${item.itemName}`}>
         <LinearGradient
           colors={[theme.colors.background, theme.colors.gradientEnd]}
-          style={styles.cardGradient}
+          style={styles(theme).cardGradient}
         >
           <Card.Content>
             <Text
@@ -219,7 +223,6 @@ const ReportsScreen: React.FC = () => {
               style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
               accessible={true}
               accessibilityLabel={`Item: ${item.itemName}`}
-              accessibilityRole="text"
             >
               {item.itemName}
             </Text>
@@ -247,7 +250,7 @@ const ReportsScreen: React.FC = () => {
     <View style={[globalStyles.container, { backgroundColor: theme.colors.background }]}>
       <LinearGradient
         colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
-        style={styles.gradient}
+        style={styles(theme).gradient}
       >
         <Text
           variant="displaySmall"
@@ -267,7 +270,7 @@ const ReportsScreen: React.FC = () => {
             { value: 'monthly', label: 'Monthly', accessibilityLabel: 'Select monthly report' },
             { value: 'custom', label: 'Custom', accessibilityLabel: 'Select custom date range' },
           ]}
-          style={styles.segmentedButtons}
+          style={styles(theme).segmentedButtons}
           theme={{
             roundness: theme.borderRadius.medium,
             colors: { secondaryContainer: theme.colors.secondary },
@@ -275,7 +278,7 @@ const ReportsScreen: React.FC = () => {
         />
         <Animated.View
           style={[
-            styles.summaryCard,
+            styles(theme).summaryCard,
             {
               opacity: summaryAnim,
               transform: [
@@ -289,10 +292,10 @@ const ReportsScreen: React.FC = () => {
             },
           ]}
         >
-          <Card style={styles.cardContainer}>
+          <Card style={styles(theme).cardContainer} accessibilityRole="summary" accessibilityLabel="Summary">
             <LinearGradient
               colors={[theme.colors.background, theme.colors.gradientEnd]}
-              style={styles.cardGradient}
+              style={styles(theme).cardGradient}
             >
               <Card.Content>
                 <Text
@@ -300,7 +303,6 @@ const ReportsScreen: React.FC = () => {
                   style={[globalStyles.cardTitle, { fontSize: theme.typography.title.fontSize, color: theme.colors.text }]}
                   accessible={true}
                   accessibilityLabel="Summary"
-                  accessibilityRole="header"
                 >
                   Summary
                 </Text>
@@ -351,13 +353,13 @@ const ReportsScreen: React.FC = () => {
               No sales for this period
             </Text>
           }
-          contentContainerStyle={[styles.listContainer, { paddingBottom: height * 0.15 }]}
+          contentContainerStyle={[styles(theme).listContainer, { paddingBottom: theme.spacing.xl }]}
         />
         <FAB
-          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+          style={[styles(theme).fab, { backgroundColor: theme.colors.primary }]}
           icon="download"
           onPress={handleExport}
-          color={theme.colors.accent}
+          color={theme.colors.text} // Changed from accent for better contrast
           customSize={56}
           accessible={true}
           accessibilityLabel="Export report"
@@ -371,7 +373,7 @@ const ReportsScreen: React.FC = () => {
         >
           <Animated.View
             style={[
-              styles.modalOverlay,
+              styles(theme).modalOverlay,
               {
                 opacity: modalAnim,
                 transform: [
@@ -387,7 +389,7 @@ const ReportsScreen: React.FC = () => {
           >
             <LinearGradient
               colors={[theme.colors.background, theme.colors.gradientEnd]}
-              style={[styles.modalContent, { maxWidth: width * 0.9 }]}
+              style={[styles(theme).modalContent, { maxWidth: width - theme.spacing.lg * 2 }]}
             >
               <Text
                 variant="titleLarge"
@@ -402,14 +404,14 @@ const ReportsScreen: React.FC = () => {
                 label="Start Date (YYYY-MM-DD)"
                 value={startDate}
                 onChangeText={setStartDate}
-                style={styles.input}
+                style={styles(theme).input}
                 mode="outlined"
                 theme={{
                   roundness: theme.borderRadius.medium,
                   colors: {
                     text: theme.colors.text,
                     primary: theme.colors.primary,
-                    background: theme.colors.background === '#1A1A1A' ? '#2A2A2A' : '#E0E0E0',
+                    background: theme.colors.background,
                     placeholder: theme.colors.secondary,
                     outline: theme.colors.primary,
                   },
@@ -423,14 +425,14 @@ const ReportsScreen: React.FC = () => {
                 label="End Date (YYYY-MM-DD)"
                 value={endDate}
                 onChangeText={setEndDate}
-                style={styles.input}
+                style={styles(theme).input}
                 mode="outlined"
                 theme={{
                   roundness: theme.borderRadius.medium,
                   colors: {
                     text: theme.colors.text,
                     primary: theme.colors.primary,
-                    background: theme.colors.background === '#1A1A1A' ? '#2A2A2A' : '#E0E0E0',
+                    background: theme.colors.background,
                     placeholder: theme.colors.secondary,
                     outline: theme.colors.primary,
                   },
@@ -440,11 +442,11 @@ const ReportsScreen: React.FC = () => {
                 accessibilityLabel="End date input"
                 accessibilityRole="text"
               />
-              <View style={styles.modalButtons}>
+              <View style={styles(theme).modalButtons}>
                 <Button
                   mode="outlined"
                   onPress={() => setModalVisible(false)}
-                  style={styles.modalButton}
+                  style={styles(theme).modalButton}
                   textColor={theme.colors.error}
                   accessible={true}
                   accessibilityLabel="Cancel date selection"
@@ -455,9 +457,9 @@ const ReportsScreen: React.FC = () => {
                 <Button
                   mode="contained"
                   onPress={handleCustomDateSubmit}
-                  style={styles.modalButton}
+                  style={styles(theme).modalButton}
                   buttonColor={theme.colors.primary}
-                  textColor={theme.colors.accent}
+                  textColor={theme.colors.text} // Changed from accent for consistency
                   accessible={true}
                   accessibilityLabel="Apply date range"
                   accessibilityRole="button"
@@ -473,62 +475,67 @@ const ReportsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-    paddingHorizontal: 16, // Use raw value as theme.spacing is dynamic
-    paddingTop: 32,
-  } as ViewStyle,
-  segmentedButtons: {
-    marginVertical: 16,
-  } as ViewStyle,
-  summaryCard: {
-    marginBottom: 16,
-  } as ViewStyle,
-  card: {
-    marginBottom: 8,
-  } as ViewStyle,
-  cardContainer: {
-    borderRadius: 8, // Use raw value as theme.borderRadius is dynamic
-    overflow: 'hidden',
-  } as ViewStyle,
-  cardGradient: {
-    padding: 16,
-    borderRadius: 8,
-  } as ViewStyle,
-  listContainer: {
-    paddingBottom: 24,
-  } as ViewStyle,
-  fab: {
-    position: 'absolute',
-    bottom: height * 0.12,
-    right: 16,
-  } as ViewStyle,
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Use raw value as theme.colors is dynamic
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  } as ViewStyle,
-  modalContent: {
-    width: '100%',
-    padding: 16,
-    borderRadius: 8,
-    elevation: 5, // Use raw elevation as theme.elevation is dynamic
-  } as ViewStyle,
-  input: {
-    marginBottom: 8,
-  } as ViewStyle,
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  } as ViewStyle,
-  modalButton: {
-    flex: 1,
-    marginHorizontal: 4,
-    paddingVertical: 4,
-  } as ViewStyle,
-});
+// Define styles as a function to dynamically use the theme
+const styles = (theme: typeof import('../theme').lightTheme) =>
+  StyleSheet.create({
+    gradient: {
+      flex: 1,
+      paddingHorizontal: theme.spacing.md,
+      paddingTop: theme.spacing.xl,
+    },
+    segmentedButtons: {
+      marginVertical: theme.spacing.md,
+    },
+    summaryCard: {
+      marginBottom: theme.spacing.md,
+    },
+    card: {
+      marginBottom: theme.spacing.sm,
+    },
+    cardContainer: {
+      borderRadius: theme.borderRadius.medium,
+      overflow: 'hidden',
+      elevation: theme.elevation,
+    },
+    cardGradient: {
+      padding: theme.spacing.md,
+      borderRadius: theme.borderRadius.medium,
+    },
+    listContainer: {
+      paddingBottom: theme.spacing.md,
+    },
+    fab: {
+      position: 'absolute',
+      bottom: theme.spacing.xl,
+      right: theme.spacing.md,
+      elevation: theme.elevation,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: theme.colors.modalOverlay,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: theme.spacing.md,
+    },
+    modalContent: {
+      width: '100%',
+      padding: theme.spacing.md,
+      borderRadius: theme.borderRadius.medium,
+      elevation: theme.elevation,
+    },
+    input: {
+      marginBottom: theme.spacing.sm,
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    modalButton: {
+      flex: 1,
+      marginHorizontal: theme.spacing.xs,
+      paddingVertical: theme.spacing.xs,
+      borderRadius: theme.borderRadius.medium,
+    },
+  });
 
 export default ReportsScreen;

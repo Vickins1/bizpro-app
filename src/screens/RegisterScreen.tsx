@@ -1,7 +1,7 @@
-// src/screens/LoginScreen.tsx
+// src/screens/RegisterScreen.tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert, Dimensions } from 'react-native';
-import { Button, Text, TextInput } from 'react-native-paper';
+import { Button, Text, TextInput, SegmentedButtons } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { globalStyles } from '../theme';
 import { useAppTheme } from '../context/ThemeContext';
@@ -14,27 +14,36 @@ const { width } = Dimensions.get('window');
 
 type NavigationProp = NativeStackNavigationProp<AuthStackParamList>;
 
-const LoginScreen: React.FC = () => {
+const RegisterScreen: React.FC = () => {
   const { theme } = useAppTheme();
-  const { login } = useAuth();
+  const { register } = useAuth();
   const navigation = useNavigation<NavigationProp>();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('user');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async () => {
+  const handleRegister = async () => {
     if (!username.trim() || !password.trim()) {
       Alert.alert('Error', 'Please enter username and password');
       return;
     }
 
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+
     setIsLoading(true);
-    const success = await login(username, password);
+    const success = await register(username, password, role);
     setIsLoading(false);
 
     if (success) {
       setUsername('');
       setPassword('');
+      setRole('user');
+      Alert.alert('Success', 'Registration successful! Please log in.');
+      navigation.navigate('Login');
     }
   };
 
@@ -49,10 +58,10 @@ const LoginScreen: React.FC = () => {
             variant="displaySmall"
             style={[globalStyles.title, { fontSize: theme.typography.display.fontSize, color: theme.colors.text }]}
             accessible={true}
-            accessibilityLabel="Login Title"
+            accessibilityLabel="Register Title"
             accessibilityRole="header"
           >
-            Login to BizPro
+            Register for BizPro
           </Text>
           <TextInput
             label="Username"
@@ -97,30 +106,45 @@ const LoginScreen: React.FC = () => {
             accessibilityLabel="Password input"
             accessibilityRole="text"
           />
+          <SegmentedButtons
+            value={role}
+            onValueChange={setRole}
+            buttons={[
+              { value: 'user', label: 'User' },
+              { value: 'admin', label: 'Admin' },
+            ]}
+            style={styles(theme).segmentedButtons}
+            theme={{
+              colors: {
+                primary: theme.colors.primary,
+                outline: theme.colors.primary,
+              },
+            }}
+          />
           <Button
             mode="contained"
-            onPress={handleLogin}
+            onPress={handleRegister}
             style={styles(theme).button}
             buttonColor={theme.colors.primary}
             textColor={theme.colors.text}
             loading={isLoading}
             disabled={isLoading}
             accessible={true}
-            accessibilityLabel="Login button"
+            accessibilityLabel="Register button"
             accessibilityRole="button"
           >
-            Login
+            Register
           </Button>
           <Button
             mode="text"
-            onPress={() => navigation.navigate('Register')}
+            onPress={() => navigation.navigate('Login')}
             style={styles(theme).linkButton}
             textColor={theme.colors.primary}
             accessible={true}
-            accessibilityLabel="Go to Register"
+            accessibilityLabel="Go to Login"
             accessibilityRole="button"
           >
-            Don't have an account? Register
+            Already have an account? Login
           </Button>
         </View>
       </LinearGradient>
@@ -145,6 +169,9 @@ const styles = (theme: typeof import('../theme').lightTheme) =>
     input: {
       marginBottom: theme.spacing.sm,
     },
+    segmentedButtons: {
+      marginVertical: theme.spacing.sm,
+    },
     button: {
       marginTop: theme.spacing.sm,
       borderRadius: theme.borderRadius.medium,
@@ -155,4 +182,4 @@ const styles = (theme: typeof import('../theme').lightTheme) =>
     },
   });
 
-export default LoginScreen;
+export default RegisterScreen;

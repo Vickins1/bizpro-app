@@ -1,35 +1,45 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    // Enable strict type checking for better code quality
+    // Enable strict type checking
     "strict": true,
     // Configure JSX for React Native
     "jsx": "react-native",
-    // Include ES6 and DOM libraries for JavaScript APIs
-    "lib": ["es6", "dom"],
-    // Use bundler module resolution for Expo/Metro compatibility
+    // Include ESNext and DOM libraries
+    "lib": ["esnext", "dom"],
+    // Use bundler module resolution for Expo/Metro
     "moduleResolution": "bundler",
-    // Allow interoperability between CommonJS and ES modules
+    // Allow CommonJS/ES module interoperability
     "esModuleInterop": true,
-    // Skip type checking of declaration files to avoid third-party issues
+    // Skip type checking of declaration files
     "skipLibCheck": true,
-    // Allow default imports from modules without explicit exports
+    // Allow synthetic default imports
     "allowSyntheticDefaultImports": true,
-    // Set base directory for resolving non-relative module names
+    // Set base directory for module resolution
     "baseUrl": ".",
-    // Specify types to include for TypeScript
+    // Map paths for easier imports
+    "paths": {
+      "*": ["src/*"]
+    },
+    // Include types for TypeScript
     "types": [
       "react",
       "react-native",
-      "@react-navigation/native",
-      "@react-navigation/bottom-tabs",
-      "@expo/vector-icons"
+      "@react-navigation/native"
     ],
-    // Target modern JavaScript version
+    // Target modern JavaScript
     "target": "esnext",
-    // Use ESNext module syntax
-    "module": "esnext"
+    // Use ESNext modules
+    "module": "esnext",
+    // Enable JSON module resolution
+    "resolveJsonModule": true,
+    // Ensure compatibility with Metro bundler
+    "isolatedModules": true,
+    // Prevent TypeScript from emitting output
+    "noEmit": true
   },
-  // Exclude node_modules to optimize compilation
-  "exclude": ["node_modules"]
+  // Include source files
+  "include": ["src/**/*", "*.ts", "*.tsx"],
+  // Exclude node_modules
+  "exclude": ["node_modules", "dist", "build"]
 }

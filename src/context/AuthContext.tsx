@@ -1,4 +1,3 @@
-// src/context/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import bcrypt from 'bcryptjs';
@@ -80,26 +79,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = useCallback(async (username: string, password: string, role = 'user') => {
     try {
+      // Input validation
+      const trimmedUsername = username.trim();
+      const trimmedPassword = password.trim();
+
+      if (!trimmedUsername || !trimmedPassword) {
+        Alert.alert('Error', 'Username and password cannot be empty');
+        return false;
+      }
+
+      if (trimmedUsername.length < 3) {
+        Alert.alert('Error', 'Username must be at least 3 characters long');
+        return false;
+      }
+
+      if (trimmedPassword.length < 6) {
+        Alert.alert('Error', 'Password must be at least 6 characters long');
+        return false;
+      }
+
+      // Username format validation (alphanumeric and underscores only)
+      if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+        Alert.alert('Error', 'Username can only contain letters, numbers, and underscores');
+        return false;
+      }
+
+      // Role validation
+      const validRoles = ['user', 'admin'];
+      if (!validRoles.includes(role)) {
+        Alert.alert('Error', 'Invalid role selected');
+        return false;
+      }
+
+      // Check for existing user
       const existingUser = await db.getFirstAsync<{ id: number }>(
         'SELECT id FROM users WHERE username = ?',
-        [username]
+        [trimmedUsername]
       );
       if (existingUser) {
         Alert.alert('Error', 'Username already exists');
         return false;
       }
 
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // Hash password and insert user in a transaction
+      const hashedPassword = await bcrypt.hash(trimmedPassword, 10);
       const date = new Date().toISOString();
-      await db.runAsync(
-        'INSERT INTO users (username, password, role, createdAt) VALUES (?, ?, ?, ?)',
-        [username, hashedPassword, role, date]
-      );
+
+      await db.withTransactionAsync(async () => {
+        await db.runAsync(
+          'INSERT INTO users (username, password, role, createdAt) VALUES (?, ?, ?, ?)',
+          [trimmedUsername, hashedPassword, role, date]
+        );
+      });
 
       Alert.alert('Success', 'User registered successfully');
       return true;
     } catch (err) {
-      Alert.alert('Error', 'Failed to register user');
+      console.warn('Registration error:', err);
+      Alert.alert('Error', 'Failed to register user. Please try again.');
       return false;
     }
   }, []);
